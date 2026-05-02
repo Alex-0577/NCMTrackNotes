@@ -1,3 +1,7 @@
+'''music.py
+音乐搜索和详情路由文件
+包含歌曲搜索、获取歌曲详情、批量获取歌曲信息等音乐相关API端点。
+'''
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
@@ -5,15 +9,39 @@ from models import Song
 from services.netease_service import netease_service
 import time
 
-music_bp = Blueprint('music', __name__)
+music_bp = Blueprint('music', __name__)         # 音乐相关路由蓝图，URL前缀在app.py中注册为'/music'
 
 @music_bp.route('/search', methods=['GET'])
 @jwt_required()
 def search_songs():
-    """
-    搜索歌曲
-    流程：1. 从缓存检索 2. 从数据库检索 3. API调用
-    """
+    '''search_songs()
+    搜索歌曲端点
+    搜索网易云音乐中的歌曲，支持分页和缓存优化，需要JWT令牌认证。
+    parameters:
+        查询参数:
+            q: string, 搜索关键词（必需）
+            limit: integer, 返回数量，默认30，最大100
+            offset: integer, 偏移量，默认0
+    returns:
+        JSON响应: {
+            'keyword': '周杰伦',
+            'total': 20,
+            'offset': 0,
+            'limit': 20,
+            'songs': [
+                {
+                    'id': 'song_123',
+                    'netease_song_id': 'song_123',
+                    'title': '七里香',
+                    'artist': '周杰伦',
+                    'album': '七里香',
+                    'album_cover_url': 'https://example.com/cover.jpg',
+                    'duration': 240000
+                }
+            ],
+            'source': 'combined'
+        }, 状态码200
+    '''
     keyword = request.args.get('q', '').strip()
     limit = request.args.get('limit', 30, type=int)
     offset = request.args.get('offset', 0, type=int)
@@ -109,10 +137,29 @@ def search_songs():
 @music_bp.route('/song/<song_id>', methods=['GET'])
 @jwt_required()
 def get_song_detail(song_id):
-    """
-    获取歌曲详情
-    流程：1. 从缓存检索 2. 从数据库检索 3. API调用
-    """
+    '''get_song_detail(song_id)
+    获取歌曲详情端点
+    获取指定歌曲的详细信息，支持三级缓存策略，需要JWT令牌认证。
+    parameters:
+        路径参数:
+            song_id: string, 网易云音乐歌曲ID
+    returns:
+        JSON响应: {
+            'song': {
+                'id': 1,
+                'netease_song_id': '123456',
+                'title': '七里香',
+                'artist': '周杰伦',
+                'album': '七里香',
+                'album_cover_url': 'https://example.com/cover.jpg',
+                'duration': 240000,
+                'note_count': 5,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:00:00Z'
+            },
+            'source': 'database'
+        }, 状态码200
+    '''
     if not song_id:
         return jsonify({'error': '歌曲ID不能为空'}), 400
     
@@ -157,9 +204,34 @@ def get_song_detail(song_id):
 @music_bp.route('/batch-songs', methods=['POST'])
 @jwt_required()
 def get_batch_songs():
-    """
-    批量获取歌曲信息
-    """
+    '''get_batch_songs()
+    批量获取歌曲信息端点
+    批量获取多首歌曲的详细信息，优化API调用，需要JWT令牌认证。
+    parameters:
+        JSON请求体: {
+            'song_ids': ['123', '456', '789']
+        }
+    returns:
+        JSON响应: {
+            'songs': [
+                {
+                    'netease_song_id': '123',
+                    'title': '七里香',
+                    'artist': '周杰伦',
+                    'album': '七里香',
+                    'album_cover_url': 'https://example.com/cover.jpg',
+                    'duration': 240000
+                }
+            ],
+            'source_counts': {
+                'cache': 0,
+                'database': 1,
+                'api': 2
+            },
+            'found_count': 3,
+            'requested_count': 3
+        }, 状态码200
+    '''
     data = request.get_json()
     
     if not data or not data.get('song_ids'):

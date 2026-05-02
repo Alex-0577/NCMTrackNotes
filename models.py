@@ -4,9 +4,22 @@ from flask_jwt_extended import create_access_token
 import json
 
 class User(db.Model):
-    """
-    User 表 - 存储应用用户信息
-    """
+    '''User
+    用户模型类
+    表示应用用户，存储用户认证信息和基本信息。
+    variables:
+        id: Integer, 用户唯一标识
+        username: String(80), 用户名，唯一
+        email: String(120), 邮箱地址，唯一
+        password_hash: String(128), 密码哈希值
+        created_at: DateTime, 创建时间
+        updated_at: DateTime, 更新时间
+    functions:
+        set_password: 设置用户密码
+        check_password: 验证用户密码
+        generate_auth_token: 生成JWT认证令牌
+        to_dict: 将用户对象转换为字典
+    '''
     __tablename__ = 'users'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -42,9 +55,20 @@ class User(db.Model):
         }
 
 class NeteaseAccount(db.Model):
-    """
-    NeteaseAccount 表 - 存储网易云账号绑定信息
-    """
+    '''NeteaseAccount
+    网易云账户绑定模型类
+    存储用户与网易云音乐账号的绑定关系。
+    variables:
+        id: Integer, 绑定记录唯一标识
+        user_id: Integer, 关联的用户ID
+        netease_user_id: String(100), 网易云用户ID，唯一
+        netease_username: String(100), 网易云用户名
+        is_bound: Boolean, 是否已绑定
+        bound_at: DateTime, 绑定时间
+        updated_at: DateTime, 更新时间
+    functions:
+        to_dict: 将绑定信息转换为字典
+    '''
     __tablename__ = 'netease_accounts'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -64,9 +88,24 @@ class NeteaseAccount(db.Model):
         }
 
 class Song(db.Model):
-    """
-    Song 表 - 存储用户添加过笔记的歌曲信息
-    """
+    '''Song
+    歌曲信息模型类
+    存储用户添加过笔记的歌曲信息，包括基本信息和统计信息。
+    variables:
+        id: Integer, 歌曲唯一标识
+        netease_song_id: String(100), 网易云歌曲ID，唯一
+        title: String(200), 歌曲标题
+        artist: String(200), 艺术家
+        album: String(200), 专辑
+        album_cover_url: String(500), 专辑封面URL
+        duration: Integer, 歌曲时长（毫秒）
+        created_at: DateTime, 创建时间
+        updated_at: DateTime, 更新时间
+        note_count: Integer, 笔记数量统计
+    functions:
+        to_dict: 将歌曲信息转换为完整字典
+        to_simple_dict: 将歌曲信息转换为简化字典
+    '''
     __tablename__ = 'songs'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -108,9 +147,21 @@ class Song(db.Model):
         }
 
 class Note(db.Model):
-    """
-    Note 表 - 存储用户对歌曲的笔记
-    """
+    '''Note
+    笔记模型类
+    存储用户对歌曲的笔记，包括内容、时间戳和权限设置。
+    variables:
+        id: Integer, 笔记唯一标识
+        user_id: Integer, 用户ID
+        song_id: Integer, 歌曲ID
+        content: Text, 笔记内容
+        timestamp: Integer, 歌曲时间戳（毫秒）
+        is_public: Boolean, 是否公开
+        created_at: DateTime, 创建时间
+        updated_at: DateTime, 更新时间
+    functions:
+        to_dict: 将笔记转换为字典，可选择包含歌曲信息
+    '''
     __tablename__ = 'notes'
     
     id = db.Column(db.Integer, primary_key=True)

@@ -1,3 +1,7 @@
+'''notes.py
+笔记管理路由文件
+包含笔记的创建、读取、更新、删除以及公开笔记查询等API端点。
+'''
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
@@ -5,13 +9,17 @@ from models import Note, Song, User
 from services.netease_service import netease_service
 from datetime import datetime
 
-notes_bp = Blueprint('notes', __name__)
+notes_bp = Blueprint('notes', __name__)         # 笔记相关路由蓝图，URL前缀在app.py中注册为'/notes'
 
 def _get_or_create_song(netease_song_id):
-    """
-    获取或创建歌曲记录
-    如果歌曲不存在于数据库，则从API获取并创建
-    """
+    '''_get_or_create_song(netease_song_id)
+    内部函数：获取或创建歌曲记录
+    根据网易云歌曲ID获取歌曲记录，如果不存在则从API获取并创建。
+    parameters:
+        netease_song_id: string, 网易云音乐歌曲ID
+    returns:
+        Song对象: 歌曲记录，如果API调用失败则返回最小化的歌曲记录
+    '''
     # 1. 先从数据库查找
     song = Song.query.filter_by(netease_song_id=netease_song_id).first()
     if song:
@@ -51,10 +59,38 @@ def _get_or_create_song(netease_song_id):
 @notes_bp.route('', methods=['POST'])
 @jwt_required()
 def create_note():
-    """
-    创建笔记
-    如果歌曲不在数据库中，会自动创建歌曲记录
-    """
+    '''create_note()
+    创建笔记端点
+    为指定歌曲创建笔记，如果歌曲不存在于数据库则自动创建歌曲记录，需要JWT令牌认证。
+    parameters:
+        JSON请求体: {
+            'netease_song_id': 'string, 网易云歌曲ID',
+            'content': 'string, 笔记内容',
+            'timestamp': 0,
+            'is_public': false
+        }
+    returns:
+        JSON响应: {
+            'message': '笔记创建成功',
+            'note': {
+                'id': 1,
+                'user_id': 1,
+                'song_id': 1,
+                'content': '这是一条笔记',
+                'timestamp': 123456,
+                'is_public': false,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:00:00Z',
+                'song': {
+                    'netease_song_id': '123456',
+                    'title': '七里香',
+                    'artist': '周杰伦',
+                    'album': '七里香',
+                    'album_cover_url': 'https://example.com/cover.jpg'
+                }
+            }
+        }, 状态码201
+    '''
     user_id = get_jwt_identity()
     data = request.get_json()
     
@@ -107,9 +143,41 @@ def create_note():
 @notes_bp.route('', methods=['GET'])
 @jwt_required()
 def get_user_notes():
-    """
-    获取当前用户的所有笔记
-    """
+    '''get_user_notes()
+    获取用户笔记端点
+    获取当前用户的所有笔记，支持分页和按歌曲筛选，需要JWT令牌认证。
+    parameters:
+        查询参数:
+            page: integer, 页码，默认1
+            per_page: integer, 每页数量，默认20
+            song_id: string, 按歌曲ID筛选（可选）
+    returns:
+        JSON响应: {
+            'notes': [
+                {
+                    'id': 1,
+                    'user_id': 1,
+                    'song_id': 1,
+                    'content': '这是一条笔记',
+                    'timestamp': 123456,
+                    'is_public': false,
+                    'created_at': '2023-10-01T12:00:00Z',
+                    'updated_at': '2023-10-01T12:00:00Z',
+                    'song': {
+                        'netease_song_id': '123456',
+                        'title': '七里香',
+                        'artist': '周杰伦',
+                        'album': '七里香',
+                        'album_cover_url': 'https://example.com/cover.jpg'
+                    }
+                }
+            ],
+            'total': 100,
+            'page': 1,
+            'per_page': 20,
+            'pages': 5
+        }, 状态码200
+    '''
     user_id = get_jwt_identity()
     
     # 查询参数
@@ -151,9 +219,33 @@ def get_user_notes():
 @notes_bp.route('/<int:note_id>', methods=['GET'])
 @jwt_required()
 def get_note(note_id):
-    """
-    获取单个笔记
-    """
+    '''get_note(note_id)
+    获取单个笔记端点
+    获取指定ID的笔记详情，需要JWT令牌认证，私有笔记只能由所有者查看。
+    parameters:
+        路径参数:
+            note_id: integer, 笔记ID
+    returns:
+        JSON响应: {
+            'note': {
+                'id': 1,
+                'user_id': 1,
+                'song_id': 1,
+                'content': '这是一条笔记',
+                'timestamp': 123456,
+                'is_public': false,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:00:00Z',
+                'song': {
+                    'netease_song_id': '123456',
+                    'title': '七里香',
+                    'artist': '周杰伦',
+                    'album': '七里香',
+                    'album_cover_url': 'https://example.com/cover.jpg'
+                }
+            }
+        }, 状态码200
+    '''
     user_id = get_jwt_identity()
     
     note = Note.query.get_or_404(note_id)
@@ -169,9 +261,39 @@ def get_note(note_id):
 @notes_bp.route('/<int:note_id>', methods=['PUT'])
 @jwt_required()
 def update_note(note_id):
-    """
-    更新笔记
-    """
+    '''update_note(note_id)
+    更新笔记端点
+    更新指定ID的笔记内容、时间戳或公开状态，需要JWT令牌认证，只能由所有者操作。
+    parameters:
+        路径参数:
+            note_id: integer, 笔记ID
+        JSON请求体（可选字段）: {
+            'content': 'string, 更新后的内容',
+            'timestamp': 123456,
+            'is_public': true
+        }
+    returns:
+        JSON响应: {
+            'message': '笔记更新成功',
+            'note': {
+                'id': 1,
+                'user_id': 1,
+                'song_id': 1,
+                'content': '更新后的内容',
+                'timestamp': 123456,
+                'is_public': true,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:30:00Z',
+                'song': {
+                    'netease_song_id': '123456',
+                    'title': '七里香',
+                    'artist': '周杰伦',
+                    'album': '七里香',
+                    'album_cover_url': 'https://example.com/cover.jpg'
+                }
+            }
+        }, 状态码200
+    '''
     user_id = get_jwt_identity()
 
     # 调试：打印JWT解析结果
@@ -222,9 +344,15 @@ def update_note(note_id):
 @notes_bp.route('/<int:note_id>', methods=['DELETE'])
 @jwt_required()
 def delete_note(note_id):
-    """
-    删除笔记
-    """
+    '''delete_note(note_id)
+    删除笔记端点
+    删除指定ID的笔记，需要JWT令牌认证，只能由所有者操作。
+    parameters:
+        路径参数:
+            note_id: integer, 笔记ID
+    returns:
+        JSON响应: {'message': '笔记删除成功'}, 状态码200
+    '''
     user_id = get_jwt_identity()
     
     note = Note.query.get_or_404(note_id)
@@ -254,9 +382,46 @@ def delete_note(note_id):
 
 @notes_bp.route('/public', methods=['GET'])
 def get_public_notes():
-    """
-    获取所有公开笔记
-    """
+    '''get_public_notes()
+    获取公开笔记端点
+    获取所有公开的笔记，支持分页、按歌曲和用户筛选，无需认证。
+    parameters:
+        查询参数:
+            page: integer, 页码，默认1
+            per_page: integer, 每页数量，默认20
+            song_id: string, 按歌曲ID筛选（可选）
+            user_id: integer, 按用户ID筛选（可选）
+    returns:
+        JSON响应: {
+            'notes': [
+                {
+                    'id': 1,
+                    'user_id': 1,
+                    'song_id': 1,
+                    'content': '这是一条公开笔记',
+                    'timestamp': 123456,
+                    'is_public': true,
+                    'created_at': '2023-10-01T12:00:00Z',
+                    'updated_at': '2023-10-01T12:00:00Z',
+                    'song': {
+                        'netease_song_id': '123456',
+                        'title': '七里香',
+                        'artist': '周杰伦',
+                        'album': '七里香',
+                        'album_cover_url': 'https://example.com/cover.jpg'
+                    },
+                    'user': {
+                        'id': 1,
+                        'username': 'testuser'
+                    }
+                }
+            ],
+            'total': 50,
+            'page': 1,
+            'per_page': 20,
+            'pages': 3
+        }, 状态码200
+    '''
     # 查询参数
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
@@ -311,10 +476,54 @@ def get_public_notes():
 
 @notes_bp.route('/by-song/<song_id>', methods=['GET'])
 def get_notes_by_song(song_id):
-    """
-    通过歌曲获取笔记
-    song_id: 网易云音乐歌曲ID
-    """
+    '''get_notes_by_song(song_id)
+    通过歌曲获取笔记端点
+    获取指定歌曲的所有笔记，支持分页和私有笔记查询，无需认证。
+    parameters:
+        路径参数:
+            song_id: string, 网易云音乐歌曲ID
+        查询参数:
+            page: integer, 页码，默认1
+            per_page: integer, 每页数量，默认20
+            include_private: boolean, 是否包含私有笔记，默认false
+            user_id: integer, 当include_private=true时，必须指定用户ID
+    returns:
+        JSON响应: {
+            'song_id': '123456',
+            'song_info': {
+                'id': 1,
+                'netease_song_id': '123456',
+                'title': '七里香',
+                'artist': '周杰伦',
+                'album': '七里香',
+                'album_cover_url': 'https://example.com/cover.jpg',
+                'duration': 240000,
+                'note_count': 5,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:00:00Z'
+            },
+            'notes': [
+                {
+                    'id': 1,
+                    'user_id': 1,
+                    'song_id': 1,
+                    'content': '这是一条笔记',
+                    'timestamp': 123456,
+                    'is_public': true,
+                    'created_at': '2023-10-01T12:00:00Z',
+                    'updated_at': '2023-10-01T12:00:00Z',
+                    'user': {
+                        'id': 1,
+                        'username': 'testuser'
+                    }
+                }
+            ],
+            'total': 5,
+            'page': 1,
+            'per_page': 20,
+            'pages': 1
+        }, 状态码200
+    '''
     if not song_id:
         return jsonify({'error': '歌曲ID不能为空'}), 400
     
@@ -375,10 +584,49 @@ def get_notes_by_song(song_id):
 @notes_bp.route('/user/<int:target_user_id>/by-song/<song_id>', methods=['GET'])
 @jwt_required()
 def get_user_notes_for_song(target_user_id, song_id):
-    """
-    获取指定用户对指定歌曲的笔记
-    需要认证，只能查看自己的私有笔记或其他用户的公开笔记
-    """
+    '''get_user_notes_for_song(target_user_id, song_id)
+    获取指定用户对指定歌曲的笔记端点
+    获取指定用户对指定歌曲的笔记，需要JWT令牌认证，只能查看自己的私有笔记或其他用户的公开笔记。
+    parameters:
+        路径参数:
+            target_user_id: integer, 目标用户ID
+            song_id: string, 网易云音乐歌曲ID
+        查询参数:
+            page: integer, 页码，默认1
+            per_page: integer, 每页数量，默认20
+    returns:
+        JSON响应: {
+            'song_id': '123456',
+            'song_info': {
+                'id': 1,
+                'netease_song_id': '123456',
+                'title': '七里香',
+                'artist': '周杰伦',
+                'album': '七里香',
+                'album_cover_url': 'https://example.com/cover.jpg',
+                'duration': 240000,
+                'note_count': 2,
+                'created_at': '2023-10-01T12:00:00Z',
+                'updated_at': '2023-10-01T12:00:00Z'
+            },
+            'notes': [
+                {
+                    'id': 1,
+                    'user_id': 1,
+                    'song_id': 1,
+                    'content': '这是一条笔记',
+                    'timestamp': 123456,
+                    'is_public': true,
+                    'created_at': '2023-10-01T12:00:00Z',
+                    'updated_at': '2023-10-01T12:00:00Z'
+                }
+            ],
+            'total': 2,
+            'page': 1,
+            'per_page': 20,
+            'pages': 1
+        }, 状态码200
+    '''
     current_user_id = get_jwt_identity()
     
     if not song_id:

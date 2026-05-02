@@ -1,3 +1,7 @@
+'''auth.py
+用户认证路由
+包含用户注册、登录、资料管理、网易云账号绑定等认证相关API端点。
+'''
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db, bcrypt
@@ -5,13 +9,31 @@ from models import User, NeteaseAccount
 from services.netease_service import netease_service
 import re
 
-auth_bp = Blueprint('auth', __name__)
+auth_bp = Blueprint('auth', __name__)       # 认证相关路由，URL前缀在app.py中定义为/api/auth
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    """
-    用户注册
-    """
+    '''register()
+    用户注册端点
+    处理新用户注册请求，创建用户账户并返回JWT令牌。
+    parameters:
+        JSON请求体: {
+            'username': 'string, 用户名',
+            'email': 'string, 邮箱地址',
+            'password': 'string, 密码'
+        }
+    returns:
+        JSON响应: {
+            'message': 'User registered successfully',
+            'user': {
+                'id': 1,
+                'username': 'testuser',
+                'email': 'test@example.com',
+                'created_at': '2023-10-01T12:00:00Z'
+            },
+            'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
+        }, 状态码201
+    '''
     data = request.get_json()
     
     # 验证输入
@@ -57,9 +79,26 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """
-    用户登录
-    """
+    '''login()
+    用户登录端点
+    处理用户登录请求，验证凭证并返回JWT令牌。
+    parameters:
+        JSON请求体: {
+            'identifier': 'string, 用户名或邮箱',
+            'password': 'string, 密码'
+        }
+    returns:
+        JSON响应: {
+            'message': 'Login successful',
+            'user': {
+                'id': 1,
+                'username': 'testuser',
+                'email': 'test@example.com',
+                'created_at': '2023-10-01T12:00:00Z'
+            },
+            'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
+        }, 状态码200
+    '''
     data = request.get_json()
     
     if not data or not data.get('identifier') or not data.get('password'):
@@ -89,9 +128,23 @@ def login():
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    """
-    获取用户资料
-    """
+    '''get_profile()
+    获取用户资料端点
+    获取当前认证用户的详细资料信息，需要JWT令牌认证。
+    returns:
+        JSON响应: {
+            'id': 1,
+            'username': 'testuser',
+            'email': 'test@example.com',
+            'created_at': '2023-10-01T12:00:00Z',
+            'netease_account': {
+                'netease_user_id': 'netease_123456',
+                'netease_username': 'netease_user',
+                'is_bound': true,
+                'bound_at': '2023-10-01T12:00:00Z'
+            }
+        }, 状态码200
+    '''
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     
@@ -109,9 +162,23 @@ def get_profile():
 @auth_bp.route('/bind-netease', methods=['POST'])
 @jwt_required()
 def bind_netease_account():
-    """
-    绑定网易云音乐账号
-    """
+    '''bind_netease_account()
+    绑定网易云账号端点
+    将网易云音乐账号绑定到当前用户账户，需要JWT令牌认证。
+    parameters:
+        JSON请求体: {
+            'netease_username': 'string, 网易云用户名',
+            'netease_password': 'string, 网易云密码'
+        }
+    returns:
+        JSON响应: {
+            'message': 'Netease account bound successfully',
+            'netease_account': {
+                'netease_username': 'netease_user',
+                'is_bound': true
+            }
+        }, 状态码200
+    '''
     user_id = get_jwt_identity()
     data = request.get_json()
     
@@ -161,9 +228,12 @@ def bind_netease_account():
 @auth_bp.route('/unbind-netease', methods=['POST'])
 @jwt_required()
 def unbind_netease_account():
-    """
-    解绑网易云音乐账号
-    """
+    '''unbind_netease_account()
+    解绑网易云账号端点
+    解绑当前用户已绑定的网易云音乐账号，需要JWT令牌认证。
+    returns:
+        JSON响应: {'message': 'Netease account unbound successfully'}, 状态码200
+    '''
     user_id = get_jwt_identity()
     
     account = NeteaseAccount.query.filter_by(user_id=user_id).first()

@@ -1,11 +1,34 @@
+'''netease_service.py
+网易云音乐服务模拟文件
+模拟网易云音乐API调用，提供歌曲搜索、详情获取、用户绑定等功能，用于测试和开发。
+'''
 import json
 import os
 import re
 
 class NeteaseMusicService:
-    """
-    网易云音乐服务
-    """
+    '''NeteaseMusicService
+    网易云音乐服务类提供缓存、测试数据加载和API调用模拟功能。
+    variables:
+        api_base: String, API基础URL
+        _cache: dict, 歌曲详情内存缓存
+        _cache_max_size: int, 缓存最大容量
+        _search_cache: dict, 搜索结果内存缓存
+        _search_cache_max_size: int, 搜索缓存最大容量
+        _songs: dict, 测试歌曲数据
+        _accounts: dict, 测试账户数据
+    functions:
+        _load_test_data: 加载测试数据
+        _get_from_cache: 从缓存获取数据
+        _set_to_cache: 将数据存入缓存
+        _get_from_search_cache: 从搜索缓存获取数据
+        _set_to_search_cache: 将搜索数据存入缓存
+        search_songs: 搜索歌曲
+        get_song_detail: 获取歌曲详情
+        get_user_info: 获取用户信息
+        bind_user_account: 绑定用户账号
+        get_playlist_songs: 获取歌单歌曲
+    '''
     
     def __init__(self):
         self.api_base = "https://music.163.com/api"
@@ -19,7 +42,12 @@ class NeteaseMusicService:
         self._load_test_data()
     
     def _load_test_data(self):
-        """加载测试数据"""
+        '''_load_test_data()
+        加载测试数据方法
+        从JSON文件加载测试用的歌曲数据和账户数据，用于模拟API调用。
+        returns:
+            无返回值，但会初始化_songs和_accounts实例变量
+        '''
         try:
             # 加载歌曲数据
             songs_file = os.path.join(os.path.dirname(__file__), 'music_data_test.json')
@@ -54,11 +82,26 @@ class NeteaseMusicService:
             self._accounts = {}
     
     def _get_from_cache(self, key):
-        """从缓存获取数据"""
+        '''_get_from_cache(key)
+        从缓存获取数据方法
+        根据键从内存缓存中获取缓存的歌曲详情数据。
+        parameters:
+            key: string, 缓存键
+        returns:
+            缓存的值，如果不存在则返回None
+        '''
         return self._cache.get(key)
     
     def _set_to_cache(self, key, value):
-        """将数据存入缓存"""
+        '''_set_to_cache(key, value)
+        将数据存入缓存方法
+        将歌曲详情数据存入内存缓存，如果缓存已满则使用LRU策略淘汰旧数据。
+        parameters:
+            key: string, 缓存键
+            value: any, 要缓存的值
+        returns:
+            无返回值
+        '''
         if len(self._cache) >= self._cache_max_size:
             # 简单的LRU策略
             oldest_key = next(iter(self._cache))
@@ -66,26 +109,52 @@ class NeteaseMusicService:
         self._cache[key] = value
     
     def _get_from_search_cache(self, key):
-        """从搜索缓存获取数据"""
+        '''_get_from_search_cache(key)
+        从搜索缓存获取数据方法
+        根据键从内存缓存中获取缓存的搜索结果数据。
+        parameters:
+            key: string, 缓存键
+        returns:
+            缓存的值，如果不存在则返回None
+        '''
         return self._search_cache.get(key)
     
     def _set_to_search_cache(self, key, value):
-        """将搜索数据存入缓存"""
+        '''_set_to_search_cache(key, value)
+        将搜索数据存入缓存方法
+        将搜索结果数据存入内存缓存，如果缓存已满则使用LRU策略淘汰旧数据。
+        parameters:
+            key: string, 缓存键
+            value: any, 要缓存的值
+        returns:
+            无返回值
+        '''
         if len(self._search_cache) >= self._search_cache_max_size:
             oldest_key = next(iter(self._search_cache))
             self._search_cache.pop(oldest_key)
         self._search_cache[key] = value
     
     def search_songs(self, keyword, limit=30, offset=0):
-        """
-        搜索歌曲
-        Args:
-            keyword: 搜索关键词
-            limit: 返回数量
-            offset: 偏移量
-        Returns:
-            歌曲列表
-        """
+        '''search_songs(keyword, limit=30, offset=0)
+        搜索歌曲方法
+        模拟网易云音乐搜索API，根据关键词搜索歌曲，支持分页和缓存。
+        parameters:
+            keyword: string, 搜索关键词
+            limit: int, 返回数量，默认30
+            offset: int, 偏移量，默认0
+        returns:
+            list: 歌曲信息列表，格式为[
+                {
+                    'id': 'song_id',
+                    'netease_song_id': 'song_id',
+                    'title': '歌曲标题',
+                    'artist': '艺术家',
+                    'album': '专辑',
+                    'album_cover_url': '封面URL',
+                    'duration': 180000
+                }
+            ]
+        '''
         cache_key = f"search:{keyword}:{limit}:{offset}"
         cached = self._get_from_search_cache(cache_key)
         if cached:
@@ -125,13 +194,22 @@ class NeteaseMusicService:
         return result
     
     def get_song_detail(self, song_id):
-        """
-        获取歌曲详情
-        Args:
-            song_id: 网易云音乐歌曲ID
-        Returns:
-            歌曲详情
-        """
+        '''get_song_detail(song_id)
+        获取歌曲详情方法
+        模拟网易云音乐歌曲详情API，根据歌曲ID获取歌曲详细信息，支持缓存。
+        parameters:
+            song_id: string, 网易云音乐歌曲ID
+        returns:
+            dict: 歌曲详情，格式为{
+                'id': 'song_id',
+                'netease_song_id': 'song_id',
+                'title': '歌曲标题',
+                'artist': '艺术家',
+                'album': '专辑',
+                'album_cover_url': '封面URL',
+                'duration': 180000
+            }
+        '''
         cache_key = f"song:{song_id}"
         cached = self._get_from_cache(cache_key)
         if cached:
@@ -167,13 +245,24 @@ class NeteaseMusicService:
         return result
     
     def get_user_info(self, user_id):
-        """
-        获取网易云用户信息
-        Args:
-            user_id: 网易云用户ID
-        Returns:
-            用户信息
-        """
+        '''get_user_info(user_id)
+        获取用户信息方法
+        模拟网易云音乐用户信息API，根据用户ID获取用户信息。
+        parameters:
+            user_id: string, 网易云用户ID
+        returns:
+            dict: 用户信息，格式为{
+                'user_id': 'netease_user_id',
+                'username': '用户名',
+                'playlists': [
+                    {
+                        'playlist_id': '歌单ID',
+                        'playlist_name': '歌单名称',
+                        'song_ids': ['歌曲ID1', '歌曲ID2']
+                    }
+                ]
+            } 或 None
+        '''
         # TODO: 实现获取用户信息API调用
         # 从测试数据中获取用户信息
         account = self._accounts.get(user_id)
@@ -186,13 +275,24 @@ class NeteaseMusicService:
         return None
     
     def bind_user_account(self, credentials):
-        """
-        绑定用户账号
-        Args:
-            credentials: 认证信息
-        Returns:
-            绑定结果
-        """
+        '''bind_user_account(credentials)
+        绑定用户账号方法
+        模拟网易云音乐用户认证和绑定逻辑，验证用户名密码并返回绑定结果。
+        parameters:
+            credentials: dict, 认证信息，格式为{
+                'username': '用户名',
+                'password': '密码'
+            }
+        returns:
+            dict: 绑定结果，格式为{
+                'success': True/False,
+                'message': '绑定成功/失败消息',
+                'data': {
+                    'user_id': 'netease_user_id',
+                    'username': '用户名'
+                } 或 None
+            }
+        '''
         # TODO: 实现用户认证和绑定逻辑
         username = credentials.get('username', '')
         password = credentials.get('password', '')
@@ -236,14 +336,15 @@ class NeteaseMusicService:
         }
     
     def get_playlist_songs(self, playlist_id, user_id=None):
-        """
-        获取歌单歌曲
-        Args:
-            playlist_id: 歌单ID
-            user_id: 用户ID（用于私有歌单）
-        Returns:
-            歌曲列表
-        """
+        '''get_playlist_songs(playlist_id, user_id=None)
+        获取歌单歌曲方法
+        模拟网易云音乐歌单歌曲API，根据歌单ID获取歌单中的歌曲列表。
+        parameters:
+            playlist_id: string, 歌单ID
+            user_id: string, 用户ID（用于私有歌单），可选
+        returns:
+            list: 歌曲详情列表，格式为[歌曲详情字典, ...]
+        '''
         # TODO: 实现获取歌单歌曲API调用
         songs = []
         
@@ -275,4 +376,4 @@ class NeteaseMusicService:
         
         return songs
 
-netease_service = NeteaseMusicService()
+netease_service = NeteaseMusicService()         # 创建网易云音乐服务实例，供其他模块调用
