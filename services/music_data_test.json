@@ -1,0 +1,153 @@
+{
+    "songs": [
+        {
+            "song_id": "1",
+            "title": "LAMIA",
+            "artist": "BlackY",
+            "album": "ONGEKI Sound Collection 06",
+            "album_cover_url": "lamia_url",
+            "duration": 149000
+        },
+        {
+            "song_id": "2",
+            "title": "Liar Mask",
+            "artist": "Ryo (supercell)",
+            "album": "Tokyo Ghoul √A Original Soundtrack",
+            "album_cover_url": "liar_mask_url",
+            "duration": 180000
+        },
+        {
+            "song_id": "3",
+            "title": "Unravel",
+            "artist": "TK from Ling Tosite Sigure",
+            "album": "Tokyo Ghoul Original Soundtrack",
+            "album_cover_url": "unravel_url",
+            "duration": 240000
+        },
+        {
+            "song_id": "4",
+            "title": "Gurenge",
+            "artist": "LiSA",
+            "album": "Demon Slayer: Kimetsu no Yaiba Original Soundtrack",
+            "album_cover_url": "gurenge_url",
+            "duration": 210000
+        },
+        {
+            "song_id": "5",
+            "title": "Homura",
+            "artist": "LiSA",
+            "album": "Demon Slayer: Kimetsu no Yaiba Movie Original Soundtrack",
+            "album_cover_url": "homura_url",
+            "duration": 200000
+        },
+        {
+            "song_id": "6",
+            "title": "Nacreous Snowmelt",
+            "artist": "Camellia",
+            "album": "Nacreous Snowmelt",
+            "album_cover_url": "nacreous_snowmelt_url",
+            "duration": 190000
+        },
+        {
+            "song_id": "7",
+            "title": "Feather",
+            "artist": "Camellia",
+            "album": "Feather",
+            "album_cover_url": "feather_url",
+            "duration": 220000
+        },
+        {
+            "song_id": "8",
+            "title": "Exit This Earth's Atomosphere",
+            "artist": "Camellia",
+            "album": "Exit This Earth's Atomosphere",
+            "album_cover_url": "exit_this_earths_atmosphere_url",
+            "duration": 230000
+        },
+        {
+            "song_id": "9",
+            "title": "Light It Up",
+            "artist": "Camellia",
+            "album": "Light It Up",
+            "album_cover_url": "light_it_up_url",
+            "duration": 210000
+        },
+        {
+            "song_id": "10",
+            "title": "Crystallized",
+            "artist": "Camellia",
+            "album": "Crystallized",
+            "album_cover_url": "crystallized_url",
+            "duration": 200000
+        }
+    ],
+    "music_accounts": [
+        {
+            "username": "music_lover_2024",
+            "user_id": "netease_001",
+            "playlists": [
+                {
+                    "playlist_id": "pl_001",
+                    "playlist_name": "每日推荐",
+                    "song_ids": [
+                        "1",
+                        "2",
+                        "3"
+                    ]
+                },
+                {
+                    "playlist_id": "pl_002",
+                    "playlist_name": "我的最爱",
+                    "song_ids": [
+                        "4",
+                        "5",
+                        "6",
+                        "7"
+                    ]
+                },
+                {
+                    "playlist_id": "pl_003",
+                    "playlist_name": "工作音乐",
+                    "song_ids": [
+                        "8",
+                        "9",
+                        "10"
+                    ]
+                }
+            ]
+        },
+        {
+            "username": "anime_music_fan",
+            "user_id": "netease_002",
+            "playlists": [
+                {
+                    "playlist_id": "pl_004",
+                    "playlist_name": "动漫精选",
+                    "song_ids": [
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                    ]
+                }
+            ]
+        },
+        {
+            "username": "camellia_fan",
+            "user_id": "netease_003",
+            "playlists": [
+                {
+                    "playlist_id": "pl_005",
+                    "playlist_name": "Camellia合集",
+                    "song_ids": [
+                        "6",
+                        "7",
+                        "8",
+                        "9",
+                        "10"
+                    ]
+                }
+            ]
+        }
+    ]
+}

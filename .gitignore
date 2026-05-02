@@ -1,0 +1,25 @@
+api.pdf
+debug_permission_fix.ps1
+NeteaseCloudMusicApi 文档.md
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-log.txt
+pip-delete-this-directory.txt
+.python-version
+REPL.py
