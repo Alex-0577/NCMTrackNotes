@@ -277,7 +277,7 @@ class NeteaseMusicService:
     def get_user_info(self, user_id):
         '''get_user_info
         获取用户信息
-        调用网易云音乐真实API获取用户信息，包括基本信息、歌单等。
+        调用网易云音乐真实API获取用户信息，包括基本信息和歌单名称（不包含歌单中的歌曲列表）。
         parameters:
             user_id(string): 网易云用户ID
         returns:
@@ -287,8 +287,7 @@ class NeteaseMusicService:
                 'playlists': [  # 歌单列表
                     {
                         'playlist_id': '歌单ID',  # 歌单ID
-                        'playlist_name': '歌单名称',  # 歌单名称
-                        'song_ids': ['歌曲ID1', '歌曲ID2']  # 歌曲ID列表
+                        'playlist_name': '歌单名称'  # 歌单名称
                     }
                 ]
             } 或 None（当用户不存在时）
@@ -311,31 +310,18 @@ class NeteaseMusicService:
                             playlist_data = playlist_response.body
                             if 'playlist' in playlist_data:
                                 for playlist in playlist_data['playlist']:
-                                    # 获取歌单中的歌曲ID
-                                    song_ids = []
                                     playlist_id = str(playlist.get('id', ''))
-                                    
-                                    # 获取歌单详情以获取歌曲列表
-                                    try:
-                                        detail_response = self._api_client.playlist_detail(id=playlist_id)
-                                        if detail_response.status == 200:
-                                            detail_data = detail_response.body
-                                            if 'playlist' in detail_data and 'trackIds' in detail_data['playlist']:
-                                                track_ids = detail_data['playlist']['trackIds']
-                                                song_ids = [str(track.get('id', '')) for track in track_ids[:10]]  # 只取前10首
-                                    except:
-                                        # 如果获取歌单详情失败，使用空列表
-                                        pass
+                                    playlist_name = playlist.get('name', '未命名歌单')
                                     
                                     playlist_info = {
                                         'playlist_id': playlist_id,
-                                        'playlist_name': playlist.get('name', '未命名歌单'),
-                                        'song_ids': song_ids
+                                        'playlist_name': playlist_name
                                     }
                                     playlists.append(playlist_info)
-                    except:
-                        # 如果获取歌单失败，使用空列表
-                        pass
+                    except Exception as e:
+                        # 如果获取歌单失败，记录错误但继续返回用户信息
+                        print(f"获取用户歌单列表时发生错误: {e}")
+                        # 不将错误信息返回给调用方，只返回已有的歌单列表
                     
                     return {
                         'user_id': str(profile.get('userId', user_id)),
@@ -344,7 +330,7 @@ class NeteaseMusicService:
                     }
             
             return None
-                
+                    
         except Exception as e:
             print(f"获取用户信息失败: {e}")
             return None
