@@ -25,3 +25,4 @@ pip-delete-this-directory.txt
 REPL.py
 NeteaseCloudMusicApi 文档_tmp.html
 NeteaseCloudMusicApi 文档.pdf
+services/test_netease_service.py

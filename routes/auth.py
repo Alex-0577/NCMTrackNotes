@@ -162,34 +162,67 @@ def get_profile():
 @auth_bp.route('/bind-netease', methods=['POST'])
 @jwt_required()
 def bind_netease_account():
-    '''bind_netease_account()
+    '''bind_netease_account
     绑定网易云账号端点
-    将网易云音乐账号绑定到当前用户账户，需要JWT令牌认证。
+    支持密码登录和验证码登录两种方式绑定网易云音乐账号，需要JWT令牌认证。
     parameters:
-        JSON请求体: {
-            'netease_username': 'string, 网易云用户名',
-            'netease_password': 'string, 网易云密码'
+        JSON请求体（密码登录）: {
+            'netease_username': 'string, 手机号或邮箱',
+            'netease_password': 'string, 密码',
+            'login_type': 'password'  # 可选，默认为password
+        }
+        或（验证码登录）: {
+            'phone': 'string, 手机号',
+            'captcha': 'string, 验证码',
+            'login_type': 'captcha'  # 必须为captcha
         }
     returns:
-        JSON响应: {
+        JSON响应（成功）: {
             'message': 'Netease account bound successfully',
             'netease_account': {
-                'netease_username': 'netease_user',
+                'netease_user_id': 'netease_user_id',
+                'netease_username': 'netease_username',
                 'is_bound': true
             }
         }, 状态码200
+        
+        JSON响应（失败）: {
+            'error': '绑定失败原因',
+            'details': '详细错误信息'
+        }, 状态码400
     '''
     user_id = get_jwt_identity()
     data = request.get_json()
     
-    if not data or not data.get('netease_username') or not data.get('netease_password'):
-        return jsonify({'error': 'Missing Netease credentials'}), 400
+    # 根据登录类型处理不同的认证方式
+    login_type = data.get('login_type', 'password')
     
-    # 调用网易云音乐服务进行绑定（占位实现）
-    bind_result = netease_service.bind_user_account({
-        'username': data['netease_username'],
-        'password': data['netease_password']
-    })
+    bind_result = None
+    
+    if login_type == 'captcha':
+        # 验证码登录
+        phone = data.get('phone')
+        captcha = data.get('captcha')
+        
+        if not phone or not captcha:
+            return jsonify({'error': 'Missing phone or captcha for captcha login'}), 400
+        
+        # 调用验证码登录
+        bind_result = netease_service.captcha_login(phone=phone, captcha=captcha)
+        
+    else:
+        # 密码登录（默认）
+        username = data.get('netease_username')
+        password = data.get('netease_password')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing Netease credentials'}), 400
+        
+        # 调用密码登录
+        bind_result = netease_service.bind_user_account({
+            'username': username,
+            'password': password
+        })
     
     if not bind_result.get('success'):
         return jsonify({
@@ -197,20 +230,27 @@ def bind_netease_account():
             'details': bind_result.get('message', 'Unknown error')
         }), 400
     
+    # 获取绑定的用户名
+    bind_username = None
+    if login_type == 'captcha':
+        bind_username = bind_result.get('data', {}).get('username', data.get('phone'))
+    else:
+        bind_username = data.get('netease_username')
+    
     # 检查是否已绑定
     existing_account = NeteaseAccount.query.filter_by(user_id=user_id).first()
     
     if existing_account:
         # 更新现有绑定
         existing_account.netease_user_id = bind_result.get('data', {}).get('user_id', 'unknown')
-        existing_account.netease_username = data['netease_username']
+        existing_account.netease_username = bind_username
         existing_account.is_bound = True
     else:
         # 创建新绑定
         new_account = NeteaseAccount(
             user_id=user_id,
             netease_user_id=bind_result.get('data', {}).get('user_id', 'unknown'),
-            netease_username=data['netease_username'],
+            netease_username=bind_username,
             is_bound=True
         )
         db.session.add(new_account)
@@ -220,10 +260,105 @@ def bind_netease_account():
     return jsonify({
         'message': 'Netease account bound successfully',
         'netease_account': {
-            'netease_username': data['netease_username'],
+            'netease_user_id': bind_result.get('data', {}).get('user_id', 'unknown'),
+            'netease_username': bind_username,
             'is_bound': True
         }
     }), 200
+
+@auth_bp.route('/send-captcha', methods=['POST'])
+@jwt_required()
+def send_captcha():
+    '''send_captcha
+    发送验证码端点
+    向指定手机号发送短信验证码，用于验证码登录绑定网易云账号。
+    parameters:
+        JSON请求体: {
+            'phone': 'string, 手机号',
+            'ctcode': 'string, 国家代码，默认86'
+        }
+    returns:
+        JSON响应（成功）: {
+            'success': True,
+            'message': '验证码发送成功',
+            'data': {
+                'phone': '手机号',
+                'captcha_sent': True
+            }
+        }, 状态码200
+        
+        JSON响应（失败）: {
+            'success': False,
+            'message': '验证码发送失败消息',
+            'data': None
+        }, 状态码400
+    '''
+    data = request.get_json()
+    phone = data.get('phone')
+    ctcode = data.get('ctcode', '86')
+    
+    if not phone:
+        return jsonify({
+            'success': False,
+            'message': '手机号不能为空',
+            'data': None
+        }), 400
+    
+    # 调用netease_service发送验证码
+    send_result = netease_service.send_captcha(phone=phone, ctcode=ctcode)
+    
+    if send_result.get('success'):
+        return jsonify(send_result), 200
+    else:
+        return jsonify(send_result), 400
+
+@auth_bp.route('/verify-captcha', methods=['POST'])
+@jwt_required()
+def verify_captcha():
+    '''verify_captcha
+    验证验证码端点
+    验证用户输入的短信验证码是否正确，用于验证码登录前的验证。
+    parameters:
+        JSON请求体: {
+            'phone': 'string, 手机号',
+            'captcha': 'string, 验证码',
+            'ctcode': 'string, 国家代码，默认86'
+        }
+    returns:
+        JSON响应（成功）: {
+            'success': True,
+            'message': '验证码验证成功',
+            'data': {
+                'phone': '手机号',
+                'captcha_verified': True
+            }
+        }, 状态码200
+        
+        JSON响应（失败）: {
+            'success': False,
+            'message': '验证码验证失败消息',
+            'data': None
+        }, 状态码400
+    '''
+    data = request.get_json()
+    phone = data.get('phone')
+    captcha = data.get('captcha')
+    ctcode = data.get('ctcode', '86')
+    
+    if not phone or not captcha:
+        return jsonify({
+            'success': False,
+            'message': '手机号和验证码不能为空',
+            'data': None
+        }), 400
+    
+    # 调用netease_service验证验证码
+    verify_result = netease_service.verify_captcha(phone=phone, captcha=captcha, ctcode=ctcode)
+    
+    if verify_result.get('success'):
+        return jsonify(verify_result), 200
+    else:
+        return jsonify(verify_result), 400
 
 @auth_bp.route('/unbind-netease', methods=['POST'])
 @jwt_required()
