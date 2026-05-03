@@ -62,7 +62,6 @@ class NeteaseAccount(db.Model):
         id: Integer, 绑定记录唯一标识
         user_id: Integer, 关联的用户ID
         netease_user_id: String(100), 网易云用户ID，唯一
-        netease_username: String(100), 网易云用户名
         is_bound: Boolean, 是否已绑定
         bound_at: DateTime, 绑定时间
         updated_at: DateTime, 更新时间
@@ -74,7 +73,6 @@ class NeteaseAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
     netease_user_id = db.Column(db.String(100), unique=True, nullable=False)
-    netease_username = db.Column(db.String(100))
     is_bound = db.Column(db.Boolean, default=False)
     bound_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -82,7 +80,6 @@ class NeteaseAccount(db.Model):
     def to_dict(self):
         return {
             'netease_user_id': self.netease_user_id,
-            'netease_username': self.netease_username,
             'is_bound': self.is_bound,
             'bound_at': self.bound_at.isoformat() if self.bound_at else None
         }

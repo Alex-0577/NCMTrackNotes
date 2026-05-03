@@ -1,6 +1,7 @@
 api.pdf
 debug_permission_fix.ps1
 NeteaseCloudMusicApi 文档.md
+instance/
 # Python
 __pycache__/
 *.py[cod]
@@ -26,3 +27,4 @@ REPL.py
 NeteaseCloudMusicApi 文档_tmp.html
 NeteaseCloudMusicApi 文档.pdf
 services/test_netease_service.py
+test_bind.py
