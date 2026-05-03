@@ -31,10 +31,10 @@
 {
     "message": "User registered successfully",
     "user": {
-    "id": 1,
-    "username": "testuser",
-    "email": "test@example.com",
-    "created_at": "2023-10-01T12:00:00Z"
+        "id": 1,
+        "username": "testuser",
+        "email": "test@example.com",
+        "created_at": "2023-10-01T12:00:00Z"
     },
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 }
@@ -111,36 +111,114 @@
 
 ### 4. 绑定网易云音乐账号
 
-绑定网易云音乐账号到用户账户。
+绑定网易云音乐账号到用户账户。支持两种登录方式：密码登录和验证码登录。
 
 **请求**:
 - **方法**: `POST`
 - **端点**: `/auth/bind-netease`
 - **认证**: 需要 (Bearer Token)
-- **请求体**:
+- **请求体** (密码登录):
 ```json
 {
-    "netease_username": "string, 网易云用户名",
-    "netease_password": "string, 网易云密码"
+    "netease_username": "string, 手机号或邮箱",
+    "netease_password": "string, 密码",
+    "login_type": "password"  // 可选，默认为password
 }
 ```
+或 (验证码登录):
+```json
+{
+    "phone": "string, 手机号",
+    "captcha": "string, 验证码",
+    "login_type": "captcha"  // 必须为captcha
+}
+```
+
 **响应**:
 - **成功 (200)**:
 ```json
 {
     "message": "Netease account bound successfully",
     "netease_account": {
-        "netease_username": "netease_user",
+        "netease_user_id": "netease_user_id",
+        "netease_username": "netease_username",
         "is_bound": true
     }
 }
 ```
-  - **错误 (400)**: 缺少网易云账号信息
+  - **错误 (400)**: 缺少必要信息或绑定失败
   - **错误 (401)**: 未认证
 
 ---
 
-### 5. 解绑网易云音乐账号
+### 5. 发送验证码
+
+向指定手机号发送短信验证码，用于验证码登录绑定网易云账号。
+
+**请求**:
+- **方法**: `POST`
+- **端点**: `/auth/send-captcha`
+- **认证**: 需要 (Bearer Token)
+- **请求体**:
+```json
+{
+    "phone": "string, 手机号",
+    "ctcode": "string, 国家代码，默认86"
+}
+```
+
+**响应**:
+- **成功 (200)**:
+```json
+{
+    "success": true,
+    "message": "验证码发送成功",
+    "data": {
+        "phone": "手机号",
+        "captcha_sent": true
+    }
+}
+```
+  - **错误 (400)**: 手机号不能为空或发送失败
+  - **错误 (401)**: 未认证
+
+---
+
+### 6. 验证验证码
+
+验证用户输入的短信验证码是否正确，用于验证码登录前的验证。
+
+**请求**:
+- **方法**: `POST`
+- **端点**: `/auth/verify-captcha`
+- **认证**: 需要 (Bearer Token)
+- **请求体**:
+```json
+{
+    "phone": "string, 手机号",
+    "captcha": "string, 验证码",
+    "ctcode": "string, 国家代码，默认86"
+}
+```
+
+**响应**:
+- **成功 (200)**:
+```json
+{
+    "success": true,
+    "message": "验证码验证成功",
+    "data": {
+        "phone": "手机号",
+        "captcha_verified": true
+    }
+}
+```
+  - **错误 (400)**: 手机号和验证码不能为空或验证失败
+  - **错误 (401)**: 未认证
+
+---
+
+### 7. 解绑网易云音乐账号
 
 解绑已绑定的网易云音乐账号。
 
@@ -158,12 +236,46 @@
 ```
 - **错误 (404)**: 未绑定网易云账号
 - **错误 (401)**: 未认证
+  
+### 8. 通过UID绑定网易云账号
+
+**请求**:
+- **方法**: `POST`
+- **端点**: `/auth/bind-netease-uid`
+- **认证**: 需要 (Bearer Token)
+- **请求体**:
+```json
+{
+    "netease_user_id": "string, 网易云用户ID（必需）",
+}
+```
+
+**描述**:
+此端点用于直接将网易云UID与当前登录的记事本账号绑定，无需进行网易云账号的登录验证。适用于已知网易云UID的场景，可以跳过登录流程快速绑定账号。
+
+**响应**:
+- **成功 (200)**:
+```json
+{
+    "success": true,
+    "message": "Netease account bound successfully by UID (created/updated)",
+    "netease_account": {
+        "netease_user_id": "netease_user_id",
+        "is_bound": true,
+        "bound_at": "2023-10-01T12:00:00Z"
+    }
+}
+```
+- **错误 (400)**: 缺少必要参数或参数格式错误
+- **错误 (409)**: 该网易云UID已被其他用户绑定
+- **错误 (401)**: 未认证
+- **错误 (500)**: 服务器内部错误
 
 ---
 
 ## 音乐相关API
 
-### 6. 搜索歌曲
+### 8. 搜索歌曲
 
 搜索网易云音乐中的歌曲。
 
@@ -179,7 +291,6 @@
 **示例请求**:
 ```
 GET /api/music/search?q=周杰伦&limit=20&offset=0
-
 Authorization: Bearer <access_token>
 ```
 **响应**:
@@ -210,7 +321,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 7. 获取歌曲详情
+### 9. 获取歌曲详情
 
 获取指定歌曲的详细信息。
 
@@ -251,7 +362,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 8. 批量获取歌曲信息
+### 10. 批量获取歌曲信息
 
 批量获取多首歌曲的信息。
 
@@ -295,7 +406,7 @@ Authorization: Bearer <access_token>
 
 ## 笔记管理API
 
-### 9. 创建笔记
+### 11. 创建笔记
 
 为指定歌曲创建笔记。
 
@@ -342,7 +453,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 10. 获取用户笔记
+### 12. 获取用户笔记
 
 获取当前用户的所有笔记。
 
@@ -393,7 +504,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 11. 获取单个笔记
+### 13. 获取单个笔记
 
 获取指定ID的笔记。
 
@@ -433,7 +544,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 12. 更新笔记
+### 14. 更新笔记
 
 更新指定ID的笔记。
 
@@ -481,7 +592,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 13. 删除笔记
+### 15. 删除笔记
 
 删除指定ID的笔记。
 
@@ -504,7 +615,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 14. 获取公开笔记
+### 16. 获取公开笔记
 
 获取所有公开的笔记。
 
@@ -557,7 +668,7 @@ GET /api/notes/public?page=1&per_page=20&song_id=123456
 ```
 ---
 
-### 15. 通过歌曲获取笔记
+### 17. 通过歌曲获取笔记
 
 获取指定歌曲的所有笔记。
 
@@ -593,8 +704,7 @@ GET /api/notes/by-song/123456?page=1&include_private=true&user_id=1
         "artist": "周杰伦",
         "album": "七里香",
         "album_cover_url": "https://example.com/cover.jpg",
-
-"duration": 240000,
+        "duration": 240000,
         "note_count": 5,
         "created_at": "2023-10-01T12:00:00Z",
         "updated_at": "2023-10-01T12:00:00Z"
@@ -623,7 +733,7 @@ GET /api/notes/by-song/123456?page=1&include_private=true&user_id=1
 ```
 ---
 
-### 16. 获取指定用户对指定歌曲的笔记
+### 18. 获取指定用户对指定歌曲的笔记
 
 获取指定用户对指定歌曲的笔记。
 
@@ -655,8 +765,7 @@ Authorization: Bearer <access_token>
         "artist": "周杰伦",
         "album": "七里香",
         "album_cover_url": "https://example.com/cover.jpg",
-
-"duration": 240000,
+        "duration": 240000,
         "note_count": 2,
         "created_at": "2023-10-01T12:00:00Z",
         "updated_at": "2023-10-01T12:00:00Z"
@@ -687,7 +796,7 @@ Authorization: Bearer <access_token>
 
 ## 健康检查
 
-### 17. 健康检查
+### 19. 健康检查
 
 检查服务是否正常运行。
 
@@ -727,125 +836,148 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 使用示例
+## 使用示例（PowerShell Invoke-RestMethod格式）
 
 ### 完整工作流程示例
 
-1. **注册用户**
-```bash
-curl -X POST http://localhost:5000/api/auth/register -H "Content-Type: application/json" -d '{"username": "testuser", "email": "test@example.com", "password": "password123"}'
-```
-2. **用户登录**
-```bash
-curl -X POST http://localhost:5000/api/auth/login -H "Content-Type: application/json" -d '{"identifier": "testuser", "password": "password123"}'
-```
-3. **搜索歌曲**
-```bash
-curl -X GET "http://localhost:5000/api/music/search?q=周杰伦&limit=10" -H "Authorization: Bearer <access_token>"
-```
-4. **创建笔记**
-```bash
-curl -X POST http://localhost:5000/api/notes
- -H "Content-Type: application/json" -H "Authorization: Bearer <access_token>" -d '{"netease_song_id": "123456", "content": "这首歌很好听", "is_public": true}'
-```
-5. **获取歌曲相关笔记**
-```bash
-curl -X GET "http://localhost:5000/api/notes/by-song/123456?page=1&per_page=10"
-```
-6. **获取自己的笔记**
-```bash
-curl -X GET "http://localhost:5000/api/notes?page=1&per_page=20" -H "Authorization: Bearer <access_token>"
-```
----
+#### 1. 注册用户
+```powershell
+$registerBody = @{
+    username = "testuser"
+    email = "test@example.com"
+    password = "password123"
+} | ConvertTo-Json
 
-## 数据结构说明
+$registerResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/auth/register" `
+    -Method Post `
+    -Headers @{ "Content-Type" = "application/json" } `
+    -Body $registerBody
 
-### 歌曲信息 (Song)
-```json
-{
-    "id": 1,
-    "netease_song_id": "123456",
-    "title": "歌曲标题",
-    "artist": "艺术家",
-    "album": "专辑",
-    "album_cover_url": "封面图片URL",
-    "duration": 240000,
-    "note_count": 5,
-    "created_at": "创建时间",
-    "updated_at": "更新时间"
+Write-Host "注册成功！用户ID: $($registerResponse.user.id)"
+Write-Host "访问令牌: $($registerResponse.access_token)"
+```
+
+#### 2. 用户登录
+```powershell
+$loginBody = @{
+    identifier = "testuser"
+    password = "password123"
+} | ConvertTo-Json
+
+$loginResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/auth/login" `
+    -Method Post `
+    -Headers @{ "Content-Type" = "application/json" } `
+    -Body $loginBody
+
+$accessToken = $loginResponse.access_token
+Write-Host "登录成功！访问令牌: $accessToken"
+```
+
+#### 3. 发送验证码（绑定网易云账号前）
+```powershell
+$sendCaptchaBody = @{
+    phone = "13800138000"
+    ctcode = "86"
+} | ConvertTo-Json
+
+$captchaResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/auth/send-captcha" `
+    -Method Post `
+    -Headers @{ 
+        "Content-Type" = "application/json"
+        "Authorization" = "Bearer $accessToken"
+    } `
+    -Body $sendCaptchaBody
+
+if ($captchaResponse.success) {
+    Write-Host "验证码发送成功！"
+} else {
+    Write-Host "验证码发送失败: $($captchaResponse.message)"
 }
 ```
-### 笔记信息 (Note)
-```json
-{
-    "id": 1,
-    "user_id": 1,
-    "song_id": 1,
-    "content": "笔记内容",
-    "timestamp": 123456,
-    "is_public": true,
-    "created_at": "创建时间",
-    "updated_at": "更新时间",
-    "song": {
-        "netease_song_id": "123456",
-        "title": "歌曲标题",
-        "artist": "艺术家",
-        "album": "专辑",
-        "album_cover_url": "封面图片URL"
-    },
-    "user": {
-        "id": 1,
-        "username": "用户名"
-    }
+
+#### 4. 验证验证码
+```powershell
+$verifyCaptchaBody = @{
+    phone = "13800138000"
+    captcha = "123456"
+    ctcode = "86"
+} | ConvertTo-Json
+
+$verifyResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/auth/verify-captcha" `
+    -Method Post `
+    -Headers @{ 
+        "Content-Type" = "application/json"
+        "Authorization" = "Bearer $accessToken"
+    } `
+    -Body $verifyCaptchaBody
+
+if ($verifyResponse.success) {
+    Write-Host "验证码验证成功！"
+} else {
+    Write-Host "验证码验证失败: $($verifyResponse.message)"
 }
 ```
-### 用户信息 (User)
-```json
-{
-    "id": 1,
-    "username": "用户名",
-    "email": "邮箱",
-    "created_at": "创建时间",
-    "netease_account": {
-        "netease_user_id": "网易云用户ID",
-        "netease_username": "网易云用户名",
-        "is_bound": true,
-        "bound_at": "绑定时间"
-    }
+
+#### 5. 绑定网易云账号（验证码登录）
+```powershell
+$bindAccountBody = @{
+    phone = "13800138000"
+    captcha = "123456"
+    login_type = "captcha"
+} | ConvertTo-Json
+
+$bindResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/auth/bind-netease" `
+    -Method Post `
+    -Headers @{ 
+        "Content-Type" = "application/json"
+        "Authorization" = "Bearer $accessToken"
+    } `
+    -Body $bindAccountBody
+
+if ($bindResponse.netease_account.is_bound) {
+    Write-Host "网易云账号绑定成功！"
+    Write-Host "网易云用户ID: $($bindResponse.netease_account.netease_user_id)"
+} else {
+    Write-Host "网易云账号绑定失败"
 }
 ```
----
 
-## 注意事项
+#### 6. 搜索歌曲
+```powershell
+$searchUri = "http://localhost:5000/api/music/search?q=周杰伦&limit=10"
+$searchResponse = Invoke-RestMethod -Uri $searchUri `
+    -Headers @{ "Authorization" = "Bearer $accessToken" }
 
-1. **认证**: 大部分API需要JWT Token认证，Token在登录或注册时获得
-2. **分页**: 列表类API都支持分页，默认每页20条
-3. **歌曲ID**: 使用网易云音乐歌曲ID，不是数据库自增ID
-4. **缓存策略**: 歌曲信息采用三级缓存策略（内存缓存 > 数据库 > API）
-5. **错误处理**: 所有API都有统一的错误响应格式
-6. **数据验证**: 所有输入都有基本的验证和清理
+Write-Host "搜索到 $($searchResponse.total) 首歌曲"
+foreach ($song in $searchResponse.songs) {
+    Write-Host "  - $($song.title) - $($song.artist)"
+}
+```
 
----
+#### 7. 创建笔记
+```powershell
+$noteBody = @{
+    netease_song_id = "123456"
+    content = "这是一条测试笔记，关于周杰伦的歌曲"
+    is_public = $true
+} | ConvertTo-Json
 
-## 更新说明
+$noteResponse = Invoke-RestMethod -Uri "http://localhost:5000/api/notes" `
+    -Method Post `
+    -Headers @{ 
+        "Content-Type" = "application/json"
+        "Authorization" = "Bearer $accessToken"
+    } `
+    -Body $noteBody
 
-### 主要改进：
+if ($noteResponse.message -eq "笔记创建成功") {
+    Write-Host "笔记创建成功！笔记ID: $($noteResponse.note.id)"
+    Write-Host "歌曲: $($noteResponse.note.song.title)"
+    Write-Host "内容: $($noteResponse.note.content)"
+}
+```
 
-1. **数据库优化**：
-   - 重新引入Song表，但仅在创建笔记时保存歌曲信息
-   - 添加了note_count字段，记录歌曲的笔记数量
-   - 添加了适当的索引优化查询性能
-
-2. **缓存策略**：
-   - 三级数据获取策略：缓存 > 数据库 > API
-   - 搜索和歌曲详情都有独立的缓存
-   - 缓存大小有限制，避免内存溢出
-
-3. **新API端点**：
-   - `/notes/by-song/<song_id>`: 通过歌曲获取笔记
-   - `/notes/user/<user_id>/by-song/<song_id>`: 获取指定用户对指定歌曲的笔记
-
-4. **性能优化**：
-   - 批量获取歌曲信息，减少API调用
-   - 数据库查询优化，添加索引
-   - 减少不必要的数据传输
+如果需要处理中文，可以指定UTF-8编码：
+```powershell
+$body = [System.Text.Encoding]::UTF8.GetBytes($jsonString)
+```

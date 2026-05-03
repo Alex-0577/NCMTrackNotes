@@ -8,6 +8,7 @@ from app import db, bcrypt
 from models import User, NeteaseAccount
 from services.netease_service import netease_service
 import re
+import datetime
 
 auth_bp = Blueprint('auth', __name__)       # 认证相关路由，URL前缀在app.py中定义为/api/auth
 
@@ -181,7 +182,6 @@ def bind_netease_account():
             'message': 'Netease account bound successfully',
             'netease_account': {
                 'netease_user_id': 'netease_user_id',
-                'netease_username': 'netease_username',
                 'is_bound': true
             }
         }, 状态码200
@@ -250,7 +250,6 @@ def bind_netease_account():
         new_account = NeteaseAccount(
             user_id=user_id,
             netease_user_id=bind_result.get('data', {}).get('user_id', 'unknown'),
-            netease_username=bind_username,
             is_bound=True
         )
         db.session.add(new_account)
@@ -265,6 +264,112 @@ def bind_netease_account():
             'is_bound': True
         }
     }), 200
+
+@auth_bp.route('/bind-netease-uid', methods=['POST'])
+@jwt_required()
+def bind_netease_account_by_uid():
+    '''bind_netease_account_by_uid
+    通过UID绑定网易云账号端点
+    将传入的网易云UID与当前登录的记事本账号直接绑定，无需登录验证，需要JWT令牌认证。
+    适用于已有网易云UID的场景，跳过登录验证流程。
+    parameters:
+        JSON请求体: {
+            'netease_user_id': 'string, 网易云用户ID（必需）',
+        }
+    returns:
+        JSON响应（成功）: {
+            'success': true,
+            'message': 'Netease account bound successfully by UID',
+            'netease_account': {
+                'netease_user_id': 'netease_user_id',
+                'is_bound': true
+            }
+        }, 状态码200
+        
+        JSON响应（失败）: {
+            'success': false,
+            'message': '绑定失败原因',
+            'error': '详细错误信息'
+        }, 状态码400
+    '''
+    # 获取当前登录用户ID
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    # 验证输入参数
+    if not data:
+        return jsonify({
+            'success': False,
+            'message': '请求体不能为空',
+            'error': 'Missing request body'
+        }), 400
+    
+    netease_user_id = data.get('netease_user_id')
+    
+    if not netease_user_id:
+        return jsonify({
+            'success': False,
+            'message': '缺少必要参数',
+            'error': 'Missing netease_user_id or netease_username'
+        }), 400
+    
+    # 验证参数格式
+    if not isinstance(netease_user_id, str):
+        return jsonify({
+            'success': False,
+            'message': '参数格式错误',
+            'error': 'netease_user_id and netease_username must be strings'
+        }), 400
+    
+    # 检查网易云UID是否已被其他用户绑定
+    existing_binding = NeteaseAccount.query.filter_by(netease_user_id=netease_user_id).first()
+    if existing_binding and existing_binding.user_id != int(user_id):
+        return jsonify({
+            'success': False,
+            'message': '该网易云账号已被其他用户绑定',
+            'error': f'Netease UID {netease_user_id} already bound to user {existing_binding.user_id}'
+        }), 409
+    
+    try:
+        # 检查当前用户是否已有绑定
+        existing_account = NeteaseAccount.query.filter_by(user_id=user_id).first()
+        
+        if existing_account:
+            # 更新现有绑定
+            existing_account.netease_user_id = netease_user_id
+            existing_account.is_bound = True
+            existing_account.bound_at = datetime.utcnow()  # 需要导入datetime
+            action = 'updated'
+        else:
+            # 创建新绑定
+            new_account = NeteaseAccount(
+                user_id=user_id,
+                netease_user_id=netease_user_id,
+                is_bound=True,
+                bound_at=datetime.utcnow()  # 需要导入datetime
+            )
+            db.session.add(new_account)
+            action = 'created'
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Netease account bound successfully by UID ({action})',
+            'netease_account': {
+                'netease_user_id': netease_user_id,
+                'is_bound': True,
+                'bound_at': datetime.utcnow().isoformat() if action == 'created' else 'updated'
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': '绑定过程中发生错误',
+            'error': str(e)
+        }), 500
 
 @auth_bp.route('/send-captcha', methods=['POST'])
 @jwt_required()
