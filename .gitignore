@@ -2,6 +2,9 @@ api.pdf
 debug_permission_fix.ps1
 NeteaseCloudMusicApi 文档.md
 instance/
+.github/
+todo.md
+*.log
 # Python
 __pycache__/
 *.py[cod]
