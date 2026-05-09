@@ -2,9 +2,9 @@
 笔记管理路由文件
 包含笔记的创建、读取、更新、删除以及公开笔记查询等API端点。
 '''
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+from app import db, error_response
 from models import Note, Song, User
 from services.netease_service import netease_service
 from datetime import datetime
@@ -93,21 +93,23 @@ def create_note():
     '''
     user_id = get_jwt_identity()
     data = request.get_json()
+    song_id = data.get('netease_song_id') if data else None
+    current_app.logger.info(f'create_note.start user_id={user_id} song_id={song_id}')
     
     # 验证输入
     required_fields = ['netease_song_id', 'content']
     for field in required_fields:
         if not data.get(field):
-            return jsonify({'error': f'缺少必填字段: {field}'}), 400
+            return error_response(f'缺少必填字段: {field}', 400)
     
     netease_song_id = data['netease_song_id'].strip()
     content = data['content'].strip()
     
     if not netease_song_id or not content:
-        return jsonify({'error': '歌曲ID和内容不能为空'}), 400
+        return error_response('歌曲ID和内容不能为空', 400)
     
     if len(content) > 10000:
-        return jsonify({'error': '笔记内容过长'}), 400
+        return error_response('笔记内容过长', 400)
     
     try:
         # 获取或创建歌曲
@@ -130,6 +132,7 @@ def create_note():
         
         db.session.add(note)
         db.session.commit()
+        current_app.logger.info(f'create_note.success user_id={user_id} song_id={netease_song_id} note_id={note.id}')
         
         return jsonify({
             'message': '笔记创建成功',
@@ -137,8 +140,9 @@ def create_note():
         }), 201
         
     except Exception as e:
+        current_app.logger.exception('create_note.failed')
         db.session.rollback()
-        return jsonify({'error': f'创建笔记失败: {str(e)}'}), 500
+        return error_response('创建笔记失败，请稍后重试', 500)
 
 @notes_bp.route('', methods=['GET'])
 @jwt_required()

@@ -7,6 +7,7 @@
 import json
 import os
 import re
+import time
 from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
 
 class NeteaseMusicService:
@@ -138,49 +139,51 @@ class NeteaseMusicService:
         if cached:
             return cached
         
-        try:
-            # 调用真实API搜索歌曲
-            response = self._api_client.search(keywords=keyword, limit=limit, offset=offset, type=1)
-            
-            if response.status == 200:
-                data = response.body
-                result = []
+        for attempt in range(3):  # 重试3次
+            try:
+                # 调用真实API搜索歌曲
+                response = self._api_client.search(keywords=keyword, limit=limit, offset=offset, type=1)
                 
-                # 解析搜索结果
-                if 'result' in data and 'songs' in data['result']:
-                    songs = data['result']['songs']
-                    print(f"song[2]: {songs[2]}")
-                    for song in songs:
-                        # 提取艺术家信息
-                        artists = song.get('ar', [])
-                        artist_name = artists[0].get('name', '未知艺术家') if artists else '未知艺术家'
-                        
-                        # 提取专辑信息
-                        album_info = song.get('al', {})
-                        album_name = album_info.get('name', '未知专辑')
-                        album_cover_url = album_info.get('picUrl', '')
-                        
-                        song_data = {
-                            'id': str(song.get('id', '')),
-                            'netease_song_id': str(song.get('id', '')),
-                            'title': song.get('name', '未知歌曲'),
-                            'artist': artist_name,
-                            'album': album_name,
-                            'album_cover_url': album_cover_url,
-                            'duration': song.get('duration', 0)  # 歌曲时长（毫秒）
-                        }
-                        result.append(song_data)
-                
-                # 存入缓存
-                self._set_to_search_cache(cache_key, result)
-                return result
-            else:
-                # API调用失败，返回空列表
-                return []
-                
-        except Exception as e:
-            print(f"搜索歌曲失败: {e}")
-            return []
+                if response.status == 200:
+                    data = response.body
+                    result = []
+                    
+                    # 解析搜索结果
+                    if 'result' in data and 'songs' in data['result']:
+                        songs = data['result']['songs']
+                        for song in songs:
+                            # 提取艺术家信息
+                            artists = song.get('ar', [])
+                            artist_name = artists[0].get('name', '未知艺术家') if artists else '未知艺术家'
+                            
+                            # 提取专辑信息
+                            album_info = song.get('al', {})
+                            album_name = album_info.get('name', '未知专辑')
+                            album_cover_url = album_info.get('picUrl', '')
+                            
+                            song_data = {
+                                'id': str(song.get('id', '')),
+                                'netease_song_id': str(song.get('id', '')),
+                                'title': song.get('name', '未知歌曲'),
+                                'artist': artist_name,
+                                'album': album_name,
+                                'album_cover_url': album_cover_url,
+                                'duration': song.get('duration', 0)  # 歌曲时长（毫秒）
+                            }
+                            result.append(song_data)
+                    
+                    # 存入缓存
+                    self._set_to_search_cache(cache_key, result)
+                    return result
+                else:
+                    # API调用失败，返回空列表
+                    return []
+                    
+            except Exception as e:
+                if attempt == 2:  # 最后一次重试失败
+                    print(f"搜索歌曲失败，已重试3次: {e}")
+                    return []
+                time.sleep(1)  # 等待1秒后重试
     
     def get_song_detail(self, song_id):
         '''get_song_detail
@@ -204,43 +207,55 @@ class NeteaseMusicService:
         if cached:
             return cached
         
-        try:
-            # 调用真实API获取歌曲详情
-            response = self._api_client.song_detail(ids=song_id)
+        for attempt in range(3):  # 重试3次
+            try:
+                # 调用真实API获取歌曲详情
+                response = self._api_client.song_detail(ids=song_id)
 
-            if response.status == 200:
-                data = response.body
-                result = None
-                
-                # 解析歌曲详情
-                if 'songs' in data and len(data['songs']) > 0:
-                    song = data['songs'][0]
+                if response.status == 200:
+                    data = response.body
+                    result = None
+                    
+                    # 解析歌曲详情
+                    if 'songs' in data and len(data['songs']) > 0:
+                        song = data['songs'][0]
 
-                    # 提取艺术家信息
-                    artists = song.get('ar', [])
-                    artist_name = artists[0].get('name', '未知艺术家') if artists else '未知艺术家'
+                        # 提取艺术家信息
+                        artists = song.get('ar', [])
+                        artist_name = artists[0].get('name', '未知艺术家') if artists else '未知艺术家'
+                        
+                        # 提取专辑信息
+                        album_info = song.get('al', {})
+                        album_name = album_info.get('name', '未知专辑')
+                        album_cover_url = album_info.get('picUrl', '')
+                        
+                        result = {
+                            'id': str(song.get('id', song_id)),
+                            'netease_song_id': str(song.get('id', song_id)),
+                            'title': song.get('name', '未知歌曲'),
+                            'artist': artist_name,
+                            'album': album_name,
+                            'album_cover_url': album_cover_url,
+                            'duration': song.get('dt', 0)  # 歌曲时长（毫秒）
+                        }
                     
-                    # 提取专辑信息
-                    album_info = song.get('al', {})
-                    album_name = album_info.get('name', '未知专辑')
-                    album_cover_url = album_info.get('picUrl', '')
-                    
-                    result = {
-                        'id': str(song.get('id', song_id)),
-                        'netease_song_id': str(song.get('id', song_id)),
-                        'title': song.get('name', '未知歌曲'),
-                        'artist': artist_name,
-                        'album': album_name,
-                        'album_cover_url': album_cover_url,
-                        'duration': song.get('dt', 0)  # 歌曲时长（毫秒）
-                    }
-                
-                if result:
-                    # 存入缓存
-                    self._set_to_cache(cache_key, result)
-                    return result
+                    if result:
+                        # 存入缓存
+                        self._set_to_cache(cache_key, result)
+                        return result
+                    else:
+                        # 如果没有找到歌曲，返回模拟数据
+                        return {
+                            'id': song_id,
+                            'netease_song_id': song_id,
+                            'title': f'歌曲 {song_id}',
+                            'artist': '未知艺术家',
+                            'album': '未知专辑',
+                            'album_cover_url': 'https://example.com/cover.jpg',
+                            'duration': 180000
+                        }
                 else:
-                    # 如果没有找到歌曲，返回模拟数据
+                    # API调用失败，返回模拟数据
                     return {
                         'id': song_id,
                         'netease_song_id': song_id,
@@ -250,29 +265,20 @@ class NeteaseMusicService:
                         'album_cover_url': 'https://example.com/cover.jpg',
                         'duration': 180000
                     }
-            else:
-                # API调用失败，返回模拟数据
-                return {
-                    'id': song_id,
-                    'netease_song_id': song_id,
-                    'title': f'歌曲 {song_id}',
-                    'artist': '未知艺术家',
-                    'album': '未知专辑',
-                    'album_cover_url': 'https://example.com/cover.jpg',
-                    'duration': 180000
-                }
-                
-        except Exception as e:
-            print(f"获取歌曲详情失败: {e}")
-            return {
-                'id': song_id,
-                'netease_song_id': song_id,
-                'title': f'歌曲 {song_id}',
-                'artist': '未知艺术家',
-                'album': '未知专辑',
-                'album_cover_url': 'https://example.com/cover.jpg',
-                'duration': 180000
-            }
+                    
+            except Exception as e:
+                if attempt == 2:  # 最后一次重试失败
+                    print(f"获取歌曲详情失败，已重试3次: {e}")
+                    return {
+                        'id': song_id,
+                        'netease_song_id': song_id,
+                        'title': f'歌曲 {song_id}',
+                        'artist': '未知艺术家',
+                        'album': '未知专辑',
+                        'album_cover_url': 'https://example.com/cover.jpg',
+                        'duration': 180000
+                    }
+                time.sleep(1)  # 等待1秒后重试
     
     def get_user_info(self, user_id):
         '''get_user_info

@@ -3,18 +3,33 @@ Flask应用工厂和配置主干
 该文件定义了Flask应用的工厂函数，配置了数据库、认证、CORS等核心组件。
 包含应用创建、蓝图注册、数据库初始化、错误处理、JWT配置和健康检查端点。
 '''
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from config import config
 import logging
+import time
+import uuid
+from logging.handlers import RotatingFileHandler
 
 # 初始化扩展
 db = SQLAlchemy()           # SQLAlchemy数据库实例
-bcrypt = Bcrypt()           # Bcrypt密码加密实例，用于密码哈希
+bcrypt = Bcrypt()           # Bcrypt密码加密实例，用于处理JWT认证
 jwt = JWTManager()          # JWT管理实例，用于处理JWT认证
+
+def error_response(message: str, code: int = 400):
+    """error_response(message, code=400)
+    统一的错误响应函数
+    创建标准化的JSON错误响应格式。
+    parameters:
+        message: str, 错误消息
+        code: int, HTTP状态码，默认400
+    returns:
+        tuple: (jsonify响应, 状态码)
+    """
+    return jsonify({"error": message, "code": code}), code
 
 def create_app(config_class=config):
     '''create_app(config_class=config)
@@ -38,6 +53,34 @@ def create_app(config_class=config):
     
     # 配置日志
     logging.basicConfig(level=logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s %(levelname)s %(name)s %(message)s'
+    )
+    handler = RotatingFileHandler('app.log', maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')
+    handler.setFormatter(formatter)
+    app.logger.handlers = []
+    app.logger.addHandler(handler)
+    logging.getLogger('werkzeug').addHandler(handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('Application startup')
+    
+    @app.before_request
+    def log_request_start():
+        g.request_start_time = time.time()
+        g.request_id = request.headers.get('X-Request-ID') or str(uuid.uuid4())
+        app.logger.info(
+            f'request.start method={request.method} path={request.path} remote={request.remote_addr} request_id={g.request_id}'
+        )
+    
+    @app.after_request
+    def log_request_end(response):
+        elapsed_ms = int((time.time() - getattr(g, 'request_start_time', time.time())) * 1000)
+        request_id = getattr(g, 'request_id', '')
+        response.headers['X-Request-ID'] = request_id
+        app.logger.info(
+            f'request.end method={request.method} path={request.path} status={response.status_code} duration_ms={elapsed_ms} request_id={request_id}'
+        )
+        return response
     
     # 注册蓝图
     from routes.auth import auth_bp
@@ -63,7 +106,7 @@ def create_app(config_class=config):
         returns:
             JSON响应: {'error': 'Not found'}, 状态码404
         '''
-        return jsonify({'error': 'Not found'}), 404
+        return error_response('Not found', 404)
     
     @app.errorhandler(500)
     def internal_error(error):
@@ -75,7 +118,7 @@ def create_app(config_class=config):
         returns:
             JSON响应: {'error': 'Internal server error'}, 状态码500
         '''
-        return jsonify({'error': 'Internal server error'}), 500
+        return error_response('Internal server error', 500)
     
     # JWT错误处理
     @jwt.invalid_token_loader
@@ -88,7 +131,7 @@ def create_app(config_class=config):
         returns:
             JSON响应: {'error': '无效的令牌: {error_string}'}, 状态码401
         '''
-        return jsonify({'error': f'无效的令牌: {error_string}'}), 401
+        return error_response(f'无效的令牌: {error_string}', 401)
     
     @jwt.unauthorized_loader
     def unauthorized_callback(error_string):
@@ -100,7 +143,7 @@ def create_app(config_class=config):
         returns:
             JSON响应: {'error': '未提供认证令牌: {error_string}'}, 状态码401
         '''
-        return jsonify({'error': f'未提供认证令牌: {error_string}'}), 401
+        return error_response(f'未提供认证令牌: {error_string}', 401)
     
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
@@ -113,7 +156,7 @@ def create_app(config_class=config):
         returns:
             JSON响应: {'error': '令牌已过期'}, 状态码401
         '''
-        return jsonify({'error': '令牌已过期'}), 401
+        return error_response('令牌已过期', 401)
     
     @app.route('/api/health')
     def health_check():

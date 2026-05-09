@@ -2,9 +2,9 @@
 用户认证路由
 包含用户注册、登录、资料管理、网易云账号绑定等认证相关API端点。
 '''
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from app import db, bcrypt
+from app import db, bcrypt, error_response
 from models import User, NeteaseAccount
 from services.netease_service import netease_service
 import re
@@ -35,48 +35,53 @@ def register():
             'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
         }, 状态码201
     '''
-    data = request.get_json()
-    
-    # 验证输入
-    if not data or not data.get('username') or not data.get('email') or not data.get('password'):
-        return jsonify({'error': 'Missing required fields'}), 400
-    
-    # 验证邮箱格式
-    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    if not re.match(email_regex, data['email']):
-        return jsonify({'error': 'Invalid email format'}), 400
-    
-    # 检查用户名和邮箱是否已存在
-    if User.query.filter_by(username=data['username']).first():
-        return jsonify({'error': 'Username already exists'}), 409
-    
-    if User.query.filter_by(email=data['email']).first():
-        return jsonify({'error': 'Email already exists'}), 409
-    
-    # 创建新用户
-    user = User(
-        username=data['username'],
-        email=data['email']
-    )
-    user.set_password(data['password'])
-    
-    db.session.add(user)
-    db.session.commit()
+    try:
+        data = request.get_json()
+        username = data.get('username') if data else None
+        email = data.get('email') if data else None
+        current_app.logger.info(
+            f'register.start username={username} email={email}'
+        )
+        
+        # 验证输入
+        if not data or not data.get('username') or not data.get('email') or not data.get('password'):
+            return error_response('Missing required fields', 400)
+        
+        # 验证邮箱格式
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, data['email']):
+            return error_response('Invalid email format', 400)
+        
+        # 检查用户名和邮箱是否已存在
+        if User.query.filter_by(username=data['username']).first():
+            return error_response('Username already exists', 409)
+        
+        if User.query.filter_by(email=data['email']).first():
+            return error_response('Email already exists', 409)
+        
+        # 创建新用户
+        user = User(
+            username=data['username'],
+            email=data['email']
+        )
+        user.set_password(data['password'])
+        
+        db.session.add(user)
+        db.session.commit()
 
-    # 调试：打印用户ID
-    # print(f"DEBUG [register]: 创建用户成功，用户ID: {user.id}, 类型: {type(user.id)}")
-    
-    # 生成访问令牌 - 将identity转换为字符串
-    access_token = create_access_token(identity=str(user.id))
-
-    # 调试：打印生成的令牌
-    # print(f"DEBUG [register]: 生成的JWT令牌: {access_token[:50]}...")
-    
-    return jsonify({
-        'message': 'User registered successfully',
-        'user': user.to_dict(),
-        'access_token': access_token
-    }), 201
+        # 生成访问令牌 - 将identity转换为字符串
+        access_token = create_access_token(identity=str(user.id))
+        current_app.logger.info(f'register.success user_id={user.id} username={user.username}')
+        
+        return jsonify({
+            'message': 'User registered successfully',
+            'user': user.to_dict(),
+            'access_token': access_token
+        }), 201
+    except Exception as e:
+        current_app.logger.exception('register.failed')
+        db.session.rollback()
+        return error_response('Registration failed, please try again later', 500)
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -100,31 +105,39 @@ def login():
             'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
         }, 状态码200
     '''
-    data = request.get_json()
-    
-    if not data or not data.get('identifier') or not data.get('password'):
-        return jsonify({'error': 'Missing username/email or password'}), 400
-    
-    identifier = data['identifier']
-    password = data['password']
-    
-    # 通过用户名或邮箱查找用户
-    if '@' in identifier:
-        user = User.query.filter_by(email=identifier).first()
-    else:
-        user = User.query.filter_by(username=identifier).first()
-    
-    if not user or not user.check_password(password):
-        return jsonify({'error': 'Invalid credentials'}), 401
-    
-    # 生成访问令牌 - 将identity转换为字符串
-    access_token = create_access_token(identity=str(user.id))
-    
-    return jsonify({
-        'message': 'Login successful',
-        'user': user.to_dict(),
-        'access_token': access_token
-    }), 200
+    try:
+        data = request.get_json()
+        identifier = data.get('identifier') if data else None
+        current_app.logger.info(f'login.start identifier={identifier}')
+        
+        if not data or not data.get('identifier') or not data.get('password'):
+            return error_response('Missing username/email or password', 400)
+        
+        identifier = data['identifier']
+        password = data['password']
+        
+        # 通过用户名或邮箱查找用户
+        if '@' in identifier:
+            user = User.query.filter_by(email=identifier).first()
+        else:
+            user = User.query.filter_by(username=identifier).first()
+        
+        if not user or not user.check_password(password):
+            current_app.logger.warning(f'login.failed identifier={identifier}')
+            return error_response('Invalid credentials', 401)
+        
+        # 生成访问令牌 - 将identity转换为字符串
+        access_token = create_access_token(identity=str(user.id))
+        current_app.logger.info(f'login.success user_id={user.id} identifier={identifier}')
+        
+        return jsonify({
+            'message': 'Login successful',
+            'user': user.to_dict(),
+            'access_token': access_token
+        }), 200
+    except Exception as e:
+        current_app.logger.exception('login.failed')
+        return error_response('Login failed, please try again later', 500)
 
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
@@ -146,19 +159,26 @@ def get_profile():
             }
         }, 状态码200
     '''
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
-    response = user.to_dict()
-    
-    # 添加网易云账号绑定信息
-    if user.netease_account:
-        response['netease_account'] = user.netease_account.to_dict()
-    
-    return jsonify(response), 200
+    try:
+        user_id = get_jwt_identity()
+        current_app.logger.info(f'profile.start user_id={user_id}')
+        user = User.query.get(user_id)
+        
+        if not user:
+            current_app.logger.warning(f'profile.not_found user_id={user_id}')
+            return error_response('User not found', 404)
+        
+        response = user.to_dict()
+        
+        # 添加网易云账号绑定信息
+        if user.netease_account:
+            response['netease_account'] = user.netease_account.to_dict()
+        
+        current_app.logger.info(f'profile.success user_id={user_id}')
+        return jsonify(response), 200
+    except Exception as e:
+        current_app.logger.exception('profile.failed')
+        return error_response('Failed to retrieve profile', 500)
 
 @auth_bp.route('/bind-netease', methods=['POST'])
 @jwt_required()
@@ -191,79 +211,86 @@ def bind_netease_account():
             'details': '详细错误信息'
         }, 状态码400
     '''
-    user_id = get_jwt_identity()
-    data = request.get_json()
-    
-    # 根据登录类型处理不同的认证方式
-    login_type = data.get('login_type', 'password')
-    
-    bind_result = None
-    
-    if login_type == 'captcha':
-        # 验证码登录
-        phone = data.get('phone')
-        captcha = data.get('captcha')
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        login_type = data.get('login_type', 'password') if data else 'password'
+        current_app.logger.info(f'bind_netease.start user_id={user_id} login_type={login_type}')
         
-        if not phone or not captcha:
-            return jsonify({'error': 'Missing phone or captcha for captcha login'}), 400
+        # 根据登录类型处理不同的认证方式
+        login_type = data.get('login_type', 'password')
         
-        # 调用验证码登录
-        bind_result = netease_service.captcha_login(phone=phone, captcha=captcha)
+        bind_result = None
         
-    else:
-        # 密码登录（默认）
-        username = data.get('netease_username')
-        password = data.get('netease_password')
+        if login_type == 'captcha':
+            # 验证码登录
+            phone = data.get('phone')
+            captcha = data.get('captcha')
+            
+            if not phone or not captcha:
+                return error_response('Missing phone or captcha for captcha login', 400)
+            
+            # 调用验证码登录
+            bind_result = netease_service.captcha_login(phone=phone, captcha=captcha)
+            
+        else:
+            # 密码登录（默认）
+            username = data.get('netease_username')
+            password = data.get('netease_password')
+            
+            if not username or not password:
+                return error_response('Missing Netease credentials', 400)
+            
+            # 调用密码登录
+            bind_result = netease_service.bind_user_account({
+                'username': username,
+                'password': password
+            })
         
-        if not username or not password:
-            return jsonify({'error': 'Missing Netease credentials'}), 400
+        if not bind_result.get('success'):
+            return error_response('Failed to bind Netease account', 400)
         
-        # 调用密码登录
-        bind_result = netease_service.bind_user_account({
-            'username': username,
-            'password': password
-        })
-    
-    if not bind_result.get('success'):
-        return jsonify({
-            'error': 'Failed to bind Netease account',
-            'details': bind_result.get('message', 'Unknown error')
-        }), 400
-    
-    # 获取绑定的用户名
-    bind_username = None
-    if login_type == 'captcha':
-        bind_username = bind_result.get('data', {}).get('username', data.get('phone'))
-    else:
-        bind_username = data.get('netease_username')
-    
-    # 检查是否已绑定
-    existing_account = NeteaseAccount.query.filter_by(user_id=user_id).first()
-    
-    if existing_account:
-        # 更新现有绑定
-        existing_account.netease_user_id = bind_result.get('data', {}).get('user_id', 'unknown')
-        existing_account.netease_username = bind_username
-        existing_account.is_bound = True
-    else:
-        # 创建新绑定
-        new_account = NeteaseAccount(
-            user_id=user_id,
-            netease_user_id=bind_result.get('data', {}).get('user_id', 'unknown'),
-            is_bound=True
+        # 获取绑定的用户名
+        bind_username = None
+        if login_type == 'captcha':
+            bind_username = bind_result.get('data', {}).get('username', data.get('phone'))
+        else:
+            bind_username = data.get('netease_username')
+        
+        # 检查是否已绑定
+        existing_account = NeteaseAccount.query.filter_by(user_id=user_id).first()
+        
+        if existing_account:
+            # 更新现有绑定
+            existing_account.netease_user_id = bind_result.get('data', {}).get('user_id', 'unknown')
+            existing_account.netease_username = bind_username
+            existing_account.is_bound = True
+        else:
+            # 创建新绑定
+            new_account = NeteaseAccount(
+                user_id=user_id,
+                netease_user_id=bind_result.get('data', {}).get('user_id', 'unknown'),
+                is_bound=True
+            )
+            db.session.add(new_account)
+        
+        db.session.commit()
+        current_app.logger.info(
+            f'bind_netease.success user_id={user_id} netease_user_id={bind_result.get("data", {}).get("user_id", "unknown")} login_type={login_type}'
         )
-        db.session.add(new_account)
-    
-    db.session.commit()
-    
-    return jsonify({
-        'message': 'Netease account bound successfully',
-        'netease_account': {
-            'netease_user_id': bind_result.get('data', {}).get('user_id', 'unknown'),
-            'netease_username': bind_username,
-            'is_bound': True
-        }
-    }), 200
+        
+        return jsonify({
+            'message': 'Netease account bound successfully',
+            'netease_account': {
+                'netease_user_id': bind_result.get('data', {}).get('user_id', 'unknown'),
+                'netease_username': bind_username,
+                'is_bound': True
+            }
+        }), 200
+    except Exception as e:
+        current_app.logger.exception('bind_netease.failed')
+        db.session.rollback()
+        return error_response('Binding failed, please try again later', 500)
 
 @auth_bp.route('/bind-netease-uid', methods=['POST'])
 @jwt_required()

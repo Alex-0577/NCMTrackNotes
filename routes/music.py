@@ -4,7 +4,7 @@
 '''
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+from app import db, error_response
 from models import Song
 from services.netease_service import netease_service
 import time
@@ -47,10 +47,10 @@ def search_songs():
     offset = request.args.get('offset', 0, type=int)
     
     if not keyword or len(keyword) < 1:
-        return jsonify({'error': '搜索关键词不能为空'}), 400
+        return error_response('搜索关键词不能为空', 400)
     
     if len(keyword) > 100:
-        return jsonify({'error': '搜索关键词过长'}), 400
+        return error_response('搜索关键词过长', 400)
     
     if limit > 100:
         limit = 100
@@ -132,7 +132,7 @@ def search_songs():
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'搜索失败: {str(e)}'}), 500
+        return error_response('搜索失败，请稍后重试', 500)
 
 @music_bp.route('/song/<song_id>', methods=['GET'])
 @jwt_required()
@@ -161,7 +161,7 @@ def get_song_detail(song_id):
         }, 状态码200
     '''
     if not song_id:
-        return jsonify({'error': '歌曲ID不能为空'}), 400
+        return error_response('歌曲ID不能为空', 400)
     
     try:
         # 1. 从缓存获取
@@ -199,7 +199,7 @@ def get_song_detail(song_id):
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'获取歌曲详情失败: {str(e)}'}), 500
+        return error_response('获取歌曲详情失败，请稍后重试', 500)
 
 @music_bp.route('/batch-songs', methods=['POST'])
 @jwt_required()
@@ -235,74 +235,77 @@ def get_batch_songs():
     data = request.get_json()
     
     if not data or not data.get('song_ids'):
-        return jsonify({'error': '未提供歌曲ID列表'}), 400
+        return error_response('未提供歌曲ID列表', 400)
     
     song_ids = data['song_ids']
     
     if not isinstance(song_ids, list):
-        return jsonify({'error': 'song_ids必须是数组'}), 400
+        return error_response('song_ids必须是数组', 400)
     
     if len(song_ids) > 100:
-        return jsonify({'error': '每次最多查询100首歌曲'}), 400
+        return error_response('每次最多查询100首歌曲', 400)
     
-    # 去重
-    unique_song_ids = list(set(song_ids))
-    
-    songs = []
-    missing_ids = []
-    source_counts = {'cache': 0, 'database': 0, 'api': 0}
-    
-    for song_id in unique_song_ids:
-        # 1. 检查缓存
-        cache_key = f"song:{song_id}"
-        cached_song = netease_service._get_from_cache(cache_key)
-        if cached_song:
-            songs.append(cached_song)
-            source_counts['cache'] += 1
-            continue
+    try:
+        # 去重
+        unique_song_ids = list(set(song_ids))
         
-        # 2. 检查数据库
-        db_song = Song.query.filter_by(netease_song_id=song_id).first()
-        if db_song:
-            song_data = db_song.to_dict()
-            songs.append(song_data)
-            netease_service._set_to_cache(cache_key, song_data)
-            source_counts['database'] += 1
-            continue
+        songs = []
+        missing_ids = []
+        source_counts = {'cache': 0, 'database': 0, 'api': 0}
         
-        missing_ids.append(song_id)
-    
-    # 3. 批量从API获取缺失的歌曲
-    if missing_ids:
-        for song_id in missing_ids:
-            try:
-                api_song = netease_service.get_song_detail(song_id)
-                if api_song:
-                    songs.append(api_song)
-                    source_counts['api'] += 1
-                else:
-                    # 记录未找到的歌曲
+        for song_id in unique_song_ids:
+            # 1. 检查缓存
+            cache_key = f"song:{song_id}"
+            cached_song = netease_service._get_from_cache(cache_key)
+            if cached_song:
+                songs.append(cached_song)
+                source_counts['cache'] += 1
+                continue
+            
+            # 2. 检查数据库
+            db_song = Song.query.filter_by(netease_song_id=song_id).first()
+            if db_song:
+                song_data = db_song.to_dict()
+                songs.append(song_data)
+                netease_service._set_to_cache(cache_key, song_data)
+                source_counts['database'] += 1
+                continue
+            
+            missing_ids.append(song_id)
+        
+        # 3. 批量从API获取缺失的歌曲
+        if missing_ids:
+            for song_id in missing_ids:
+                try:
+                    api_song = netease_service.get_song_detail(song_id)
+                    if api_song:
+                        songs.append(api_song)
+                        source_counts['api'] += 1
+                    else:
+                        # 记录未找到的歌曲
+                        songs.append({
+                            'netease_song_id': song_id,
+                            'title': '未知歌曲',
+                            'artist': '未知',
+                            'album': '未知',
+                            'duration': 0,
+                            'error': '未找到歌曲信息'
+                        })
+                except Exception as e:
                     songs.append({
                         'netease_song_id': song_id,
                         'title': '未知歌曲',
                         'artist': '未知',
                         'album': '未知',
                         'duration': 0,
-                        'error': '未找到歌曲信息'
+                        'error': str(e)
                     })
-            except Exception as e:
-                songs.append({
-                    'netease_song_id': song_id,
-                    'title': '未知歌曲',
-                    'artist': '未知',
-                    'album': '未知',
-                    'duration': 0,
-                    'error': str(e)
-                })
-    
-    return jsonify({
-        'songs': songs,
-        'source_counts': source_counts,
-        'found_count': len(songs),
-        'requested_count': len(song_ids)
-    }), 200
+        
+        return jsonify({
+            'songs': songs,
+            'source_counts': source_counts,
+            'found_count': len(songs),
+            'requested_count': len(song_ids)
+        }), 200
+    except Exception as e:
+        return error_response('批量获取歌曲失败，请稍后重试', 500)
