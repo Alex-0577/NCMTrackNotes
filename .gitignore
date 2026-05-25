@@ -31,3 +31,5 @@ NeteaseCloudMusicApi 文档_tmp.html
 NeteaseCloudMusicApi 文档.pdf
 services/test_netease_service.py
 test_bind.py
+.prompt.md
+.instructions.md

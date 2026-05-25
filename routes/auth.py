@@ -12,6 +12,17 @@ import datetime
 
 auth_bp = Blueprint('auth', __name__)       # 认证相关路由，URL前缀在app.py中定义为/api/auth
 
+# User service will be initialized in app context
+user_service = None
+
+def get_user_service():
+    """Get or create user service instance."""
+    from services.user_service import UserService
+    global user_service
+    if user_service is None:
+        user_service = UserService(db, bcrypt)
+    return user_service
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     '''register()
@@ -42,42 +53,29 @@ def register():
         current_app.logger.info(
             f'register.start username={username} email={email}'
         )
-        
+
         # 验证输入
         if not data or not data.get('username') or not data.get('email') or not data.get('password'):
             return error_response('Missing required fields', 400)
-        
+
         # 验证邮箱格式
         email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(email_regex, data['email']):
             return error_response('Invalid email format', 400)
-        
-        # 检查用户名和邮箱是否已存在
-        if User.query.filter_by(username=data['username']).first():
-            return error_response('Username already exists', 409)
-        
-        if User.query.filter_by(email=data['email']).first():
-            return error_response('Email already exists', 409)
-        
-        # 创建新用户
-        user = User(
-            username=data['username'],
-            email=data['email']
-        )
-        user.set_password(data['password'])
-        
-        db.session.add(user)
-        db.session.commit()
 
-        # 生成访问令牌 - 将identity转换为字符串
-        access_token = create_access_token(identity=str(user.id))
-        current_app.logger.info(f'register.success user_id={user.id} username={user.username}')
-        
-        return jsonify({
-            'message': 'User registered successfully',
-            'user': user.to_dict(),
-            'access_token': access_token
-        }), 201
+        # 使用服务层注册用户
+        result = get_user_service().register_user(
+            username=data['username'],
+            email=data['email'],
+            password=data['password']
+        )
+
+        current_app.logger.info(f'register.success user_id={result["user"]["id"]} username={result["user"]["username"]}')
+
+        return jsonify(result), 201
+    except ValueError as e:
+        current_app.logger.warning(f'register.validation_failed username={username} email={email} error={str(e)}')
+        return error_response(str(e), 400)
     except Exception as e:
         current_app.logger.exception('register.failed')
         db.session.rollback()
@@ -109,32 +107,22 @@ def login():
         data = request.get_json()
         identifier = data.get('identifier') if data else None
         current_app.logger.info(f'login.start identifier={identifier}')
-        
+
         if not data or not data.get('identifier') or not data.get('password'):
             return error_response('Missing username/email or password', 400)
-        
-        identifier = data['identifier']
-        password = data['password']
-        
-        # 通过用户名或邮箱查找用户
-        if '@' in identifier:
-            user = User.query.filter_by(email=identifier).first()
-        else:
-            user = User.query.filter_by(username=identifier).first()
-        
-        if not user or not user.check_password(password):
-            current_app.logger.warning(f'login.failed identifier={identifier}')
-            return error_response('Invalid credentials', 401)
-        
-        # 生成访问令牌 - 将identity转换为字符串
-        access_token = create_access_token(identity=str(user.id))
-        current_app.logger.info(f'login.success user_id={user.id} identifier={identifier}')
-        
-        return jsonify({
-            'message': 'Login successful',
-            'user': user.to_dict(),
-            'access_token': access_token
-        }), 200
+
+        # 使用服务层认证用户
+        result = get_user_service().authenticate_user(
+            identifier=data['identifier'],
+            password=data['password']
+        )
+
+        current_app.logger.info(f'login.success user_id={result["user"]["id"]} identifier={identifier}')
+
+        return jsonify(result), 200
+    except ValueError as e:
+        current_app.logger.warning(f'login.failed identifier={identifier} error={str(e)}')
+        return error_response(str(e), 401)
     except Exception as e:
         current_app.logger.exception('login.failed')
         return error_response('Login failed, please try again later', 500)
@@ -162,20 +150,15 @@ def get_profile():
     try:
         user_id = get_jwt_identity()
         current_app.logger.info(f'profile.start user_id={user_id}')
-        user = User.query.get(user_id)
-        
-        if not user:
-            current_app.logger.warning(f'profile.not_found user_id={user_id}')
-            return error_response('User not found', 404)
-        
-        response = user.to_dict()
-        
-        # 添加网易云账号绑定信息
-        if user.netease_account:
-            response['netease_account'] = user.netease_account.to_dict()
-        
+
+        # 使用服务层获取用户资料
+        result = get_user_service().get_user_profile(int(user_id))
+
         current_app.logger.info(f'profile.success user_id={user_id}')
-        return jsonify(response), 200
+        return jsonify(result), 200
+    except ValueError as e:
+        current_app.logger.warning(f'profile.not_found user_id={user_id} error={str(e)}')
+        return error_response(str(e), 404)
     except Exception as e:
         current_app.logger.exception('profile.failed')
         return error_response('Failed to retrieve profile', 500)
@@ -205,7 +188,7 @@ def bind_netease_account():
                 'is_bound': true
             }
         }, 状态码200
-        
+
         JSON响应（失败）: {
             'error': '绑定失败原因',
             'details': '详细错误信息'
@@ -216,77 +199,64 @@ def bind_netease_account():
         data = request.get_json()
         login_type = data.get('login_type', 'password') if data else 'password'
         current_app.logger.info(f'bind_netease.start user_id={user_id} login_type={login_type}')
-        
+
         # 根据登录类型处理不同的认证方式
         login_type = data.get('login_type', 'password')
-        
+
         bind_result = None
-        
+
         if login_type == 'captcha':
             # 验证码登录
             phone = data.get('phone')
             captcha = data.get('captcha')
-            
+
             if not phone or not captcha:
                 return error_response('Missing phone or captcha for captcha login', 400)
-            
+
             # 调用验证码登录
             bind_result = netease_service.captcha_login(phone=phone, captcha=captcha)
-            
+
         else:
             # 密码登录（默认）
             username = data.get('netease_username')
             password = data.get('netease_password')
-            
+
             if not username or not password:
                 return error_response('Missing Netease credentials', 400)
-            
+
             # 调用密码登录
             bind_result = netease_service.bind_user_account({
                 'username': username,
                 'password': password
             })
-        
+
         if not bind_result.get('success'):
             return error_response('Failed to bind Netease account', 400)
-        
+
         # 获取绑定的用户名
         bind_username = None
         if login_type == 'captcha':
             bind_username = bind_result.get('data', {}).get('username', data.get('phone'))
         else:
             bind_username = data.get('netease_username')
-        
-        # 检查是否已绑定
-        existing_account = NeteaseAccount.query.filter_by(user_id=user_id).first()
-        
-        if existing_account:
-            # 更新现有绑定
-            existing_account.netease_user_id = bind_result.get('data', {}).get('user_id', 'unknown')
-            existing_account.netease_username = bind_username
-            existing_account.is_bound = True
-        else:
-            # 创建新绑定
-            new_account = NeteaseAccount(
-                user_id=user_id,
-                netease_user_id=bind_result.get('data', {}).get('user_id', 'unknown'),
-                is_bound=True
-            )
-            db.session.add(new_account)
-        
-        db.session.commit()
+
+        # 使用服务层绑定网易云账号
+        result = get_user_service().bind_netease_account(
+            user_id=int(user_id),
+            netease_data={
+                'user_id': bind_result.get('data', {}).get('user_id', 'unknown'),
+                'username': bind_username
+            }
+        )
+
         current_app.logger.info(
             f'bind_netease.success user_id={user_id} netease_user_id={bind_result.get("data", {}).get("user_id", "unknown")} login_type={login_type}'
         )
-        
-        return jsonify({
-            'message': 'Netease account bound successfully',
-            'netease_account': {
-                'netease_user_id': bind_result.get('data', {}).get('user_id', 'unknown'),
-                'netease_username': bind_username,
-                'is_bound': True
-            }
-        }), 200
+
+        return jsonify(result), 200
+    except ValueError as e:
+        current_app.logger.warning(f'bind_netease.validation_failed user_id={user_id} error={str(e)}')
+        return error_response(str(e), 400)
     except Exception as e:
         current_app.logger.exception('bind_netease.failed')
         db.session.rollback()
